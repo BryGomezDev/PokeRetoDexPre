@@ -362,9 +362,11 @@ Realizada con el agente "Security Engineer" de Claude Code antes de desplegar a 
 **No bloqueantes, pendientes de valorar más adelante:**
 - Dominio del email sintético visible en el bundle del cliente (aceptable para 2-3 usuarios).
 - Recomendación de actualizar a Next.js 15.x antes de producción (la versión actual, 14.2.35, ya incluye el parche de CVE-2025-29927).
-- Bug de hidratación de `LanguageContext` (ya documentado en sección 11, pendiente de fix).
 
-**⚠️ Pendiente — el proyecto NO tiene repositorio git inicializado** (carpeta local sin control de versiones). Antes de desplegar a Vercel, se recomienda:
-1. `git init` en la raíz del proyecto.
-2. Crear un repositorio privado en GitHub y hacer el primer commit (con el `.gitignore` ya corregido, así que las claves nunca llegan a subirse).
-3. Conectar ese repositorio a Vercel para despliegues automáticos.
+**✅ Repositorio git**: inicializado, commiteado y subido a GitHub (`praisegaming/PokeRetoDex`, privado). Desplegado en Vercel con éxito, con las 6 variables de entorno de Firebase configuradas.
+
+---
+
+## 15. Mejoras pendientes (backlog, no bloqueantes)
+
+- **Timeout en "Verificando sesión..."**: si un usuario es borrado desde Firebase Console (Authentication) mientras tenía una sesión activa en el navegador, al intentar recargar/volver a entrar la app se queda colgada indefinidamente en el estado "Verificando sesión..." sin ninguna forma de salir de ahí. Fix propuesto: añadir un timeout (ej. 5-8 segundos) a la verificación de sesión en el componente de loading/guard de rutas protegidas; si se supera ese tiempo sin resolver, tratarlo como sesión inválida, limpiar la cookie/estado local, y redirigir a `/login` (idealmente con un mensaje tipo "Tu sesión ha expirado o ya no es válida, inicia sesión de nuevo").
