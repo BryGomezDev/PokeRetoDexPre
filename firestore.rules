@@ -1,0 +1,22 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /pokemon/{slug} {
+      allow read: if true;
+      allow write: if false; // solo el script Python vía Admin SDK
+    }
+
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      match /collection/{pokemonSlug} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      match /config/rules {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+  }
+}
