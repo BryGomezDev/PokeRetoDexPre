@@ -365,8 +365,7 @@ Realizada con el agente "Security Engineer" de Claude Code antes de desplegar a 
 
 **✅ Repositorio git**: inicializado, commiteado y subido a GitHub (`praisegaming/PokeRetoDex`, privado). Desplegado en Vercel con éxito, con las 6 variables de entorno de Firebase configuradas.
 
----
-
+----
 ## 15. Mejoras pendientes (backlog, no bloqueantes)
 
 - **Timeout en "Verificando sesión..."**: si un usuario es borrado desde Firebase Console (Authentication) mientras tenía una sesión activa en el navegador, al intentar recargar/volver a entrar la app se queda colgada indefinidamente en el estado "Verificando sesión..." sin ninguna forma de salir de ahí. Fix propuesto: añadir un timeout (ej. 5-8 segundos) a la verificación de sesión en el componente de loading/guard de rutas protegidas; si se supera ese tiempo sin resolver, tratarlo como sesión inválida, limpiar la cookie/estado local, y redirigir a `/login` (idealmente con un mensaje tipo "Tu sesión ha expirado o ya no es válida, inicia sesión de nuevo").
