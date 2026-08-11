@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
-import { Sparkles, Ticket } from "lucide-react";
+import { Sparkles, Ticket, Layers, Plus, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PokemonWithStatus, Variant, CardLanguage } from "@/hooks/usePokedexData";
 import { useLanguage } from "@/context/LanguageContext";
@@ -37,21 +37,49 @@ interface PokemonModalProps {
   onSave: (owned: boolean, variant: Variant | null, language: CardLanguage | null) => Promise<void>;
   onToggleShiny: () => Promise<void>;
   onTogglePromo: () => Promise<void>;
+  onToggleBulk: () => Promise<void>;
+  onUpdateBulkQuantity: (qty: number) => Promise<void>;
 }
 
-export function PokemonModal({ pokemon, onClose, onSave, onToggleShiny, onTogglePromo }: PokemonModalProps) {
+export function PokemonModal({ pokemon, onClose, onSave, onToggleShiny, onTogglePromo, onToggleBulk, onUpdateBulkQuantity }: PokemonModalProps) {
   const { t } = useLanguage();
   const [owned, setOwned] = useState(pokemon.owned);
   const [variant, setVariant] = useState<Variant | null>(pokemon.variant);
   const [language, setLanguage] = useState<CardLanguage | null>(pokemon.language);
   const [saving, setSaving] = useState(false);
 
-  // Sync state when a different Pokémon is opened
+  // Bulk quantity — local state for immediate stepper feedback, debounce writes to Firestore
+  const [localBulkQty, setLocalBulkQty] = useState(pokemon.bulk_quantity);
+  const localBulkQtyRef = useRef(pokemon.bulk_quantity);
+  const bulkDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref keeps onUpdateBulkQuantity current so the unmount cleanup never holds a stale closure
+  const onUpdateBulkQuantityRef = useRef(onUpdateBulkQuantity);
+  useEffect(() => { onUpdateBulkQuantityRef.current = onUpdateBulkQuantity; });
+
+  // Sync owned/variant/language when a different Pokémon is opened
   useEffect(() => {
     setOwned(pokemon.owned);
     setVariant(pokemon.variant);
     setLanguage(pokemon.language);
   }, [pokemon.slug, pokemon.owned, pokemon.variant, pokemon.language]);
+
+  // Sync bulk quantity only when slug changes or is_bulk toggles (not on every quantity write)
+  useEffect(() => {
+    setLocalBulkQty(pokemon.bulk_quantity);
+    localBulkQtyRef.current = pokemon.bulk_quantity;
+  }, [pokemon.slug, pokemon.is_bulk]);
+
+  // On unmount: if a debounce write is still pending, cancel the timer and flush immediately
+  // so closing the modal within the 1000ms window never silently discards a quantity change
+  useEffect(() => {
+    return () => {
+      if (bulkDebounceRef.current) {
+        clearTimeout(bulkDebounceRef.current);
+        bulkDebounceRef.current = null;
+        onUpdateBulkQuantityRef.current(localBulkQtyRef.current);
+      }
+    };
+  }, []);
 
   // Close on Escape key
   useEffect(() => {
@@ -76,6 +104,16 @@ export function PokemonModal({ pokemon, onClose, onSave, onToggleShiny, onToggle
       setVariant(null);
       setLanguage(null);
     }
+  }
+
+  function handleBulkQuantityChange(delta: number) {
+    const newQty = Math.max(1, localBulkQtyRef.current + delta);
+    localBulkQtyRef.current = newQty;
+    setLocalBulkQty(newQty);
+    if (bulkDebounceRef.current) clearTimeout(bulkDebounceRef.current);
+    bulkDebounceRef.current = setTimeout(() => {
+      onUpdateBulkQuantity(localBulkQtyRef.current);
+    }, 1000);
   }
 
   async function handleSave() {
@@ -240,6 +278,53 @@ export function PokemonModal({ pokemon, onClose, onSave, onToggleShiny, onToggle
                   <Ticket size={14} aria-hidden="true" />
                   <span className="text-xs font-medium">Promo</span>
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* Bulk — toggle + debounced quantity stepper */}
+          {owned && (
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-gray-400 font-medium">Bulk</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onToggleBulk}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 transition-all duration-150",
+                    pokemon.is_bulk
+                      ? "border-emerald-400 bg-emerald-400/10 text-emerald-400"
+                      : "border-gray-700 bg-gray-800 text-gray-500 hover:border-gray-600 hover:text-gray-300"
+                  )}
+                >
+                  <Layers size={14} aria-hidden="true" />
+                  <span className="text-xs font-medium">{t("modal.bulkLabel")}</span>
+                </button>
+
+                {pokemon.is_bulk && (
+                  <div className="flex items-center bg-gray-800 rounded-lg border border-gray-700">
+                    <button
+                      type="button"
+                      onClick={() => handleBulkQuantityChange(-1)}
+                      disabled={localBulkQty <= 1}
+                      aria-label="Reducir cantidad"
+                      className="w-8 h-8 flex items-center justify-center text-gray-300 hover:text-white disabled:text-gray-700 disabled:pointer-events-none transition-colors"
+                    >
+                      <Minus size={12} aria-hidden="true" />
+                    </button>
+                    <span className="text-sm font-bold text-white min-w-[28px] text-center">
+                      {localBulkQty}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleBulkQuantityChange(1)}
+                      aria-label="Aumentar cantidad"
+                      className="w-8 h-8 flex items-center justify-center text-gray-300 hover:text-white transition-colors"
+                    >
+                      <Plus size={12} aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

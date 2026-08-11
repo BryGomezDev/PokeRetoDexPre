@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useMemo, useCallback } from "react";
 import Image from "next/image";
@@ -89,6 +89,7 @@ export default function PokedexPage() {
     error,
     updatePokemonStatus,
     updateSpecialFlag,
+    updateBulkStatus,
   } = usePokedexContext();
 
   const [search, setSearch] = useState("");
@@ -464,6 +465,7 @@ export default function PokedexPage() {
                     key={p.slug}
                     pokemon={p}
                     onClick={() => setSelectedSlug(p.slug)}
+
                   />
                 ))}
               </div>
@@ -480,6 +482,8 @@ export default function PokedexPage() {
           onSave={handleModalSave}
           onToggleShiny={() => updateSpecialFlag(selectedPokemon.slug, "is_shiny", !selectedPokemon.is_shiny)}
           onTogglePromo={() => updateSpecialFlag(selectedPokemon.slug, "is_promo", !selectedPokemon.is_promo)}
+          onToggleBulk={() => updateBulkStatus(selectedPokemon.slug, !selectedPokemon.is_bulk, selectedPokemon.is_bulk ? 0 : 1)}
+          onUpdateBulkQuantity={(qty) => updateBulkStatus(selectedPokemon.slug, true, qty)}
         />
       )}
     </div>

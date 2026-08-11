@@ -85,6 +85,8 @@ Poblada por el script Python (Fase 4) desde PokéAPI. Compartida por todos los u
 | `variant` | string \| null | `"basica"` \| `"holo"` \| `"alternativa"` \| `"fullart"` — solo relevante si `owned == true` |
 | `is_shiny` | boolean | Marca independiente de "carta Shiny/Radiante". Solo relevante si `owned == true` (se resetea a `false` al desmarcar `owned`). No excluyente con `variant` — una carta puede ser Holo Y Shiny a la vez. |
 | `is_promo` | boolean | Marca independiente de "carta Promocional". Mismas reglas que `is_shiny`: solo relevante si `owned == true`, no excluyente con `variant` ni con `is_shiny`. |
+| `is_bulk` | boolean | Marca independiente de "carta sobrante" (copias extra disponibles para intercambio). Solo relevante si `owned == true` (se resetea a `false` al desmarcar `owned`). No excluyente con `variant`, `is_shiny` ni `is_promo`. |
+| `bulk_quantity` | number | Número de copias sobrantes. Solo relevante si `is_bulk == true` (se resetea a `0` al desmarcar `owned` o `is_bulk`). Valor mínimo cuando is_bulk=true: 1. |
 | `language` | string \| null | `"es"` \| `"en"` \| `"zh"` \| `"ko"` \| `"ja"` \| `"otros"` — solo relevante si `owned == true` |
 | `updated_at` | timestamp | Última modificación |
 
@@ -153,11 +155,11 @@ service cloud.firestore {
 ### 5.3 Pokédex Grid (pantalla principal)
 - Grid de tarjetas: sprite, número, nombre.
 - Indicador visual de estado: no poseído (atenuado/gris), poseído (color completo), con acabado distinto por variante (Holo = borde/brillo dorado, Full Art = borde iridiscente, Alternativa = marco especial, Básica = borde neutro).
-- **Iconos Shiny/Promo** en la esquina superior derecha de cada tarjeta (solo visibles si la carta está poseída): dos iconos distintos entre sí, mostrando el estado actual. En el grid son **solo indicadores visuales de solo lectura** (sombreados/apagados si no tienen la marca, a todo color si la tienen) — NO son interactivos aquí, para evitar toques accidentales al navegar el grid. El único lugar donde se activan/desactivan es dentro del modal de detalle.
+- **Iconos Shiny/Promo/Bulk** en la esquina superior derecha de cada tarjeta (solo visibles si la carta está poseída): tres iconos distintos, mostrando el estado actual. Shiny y Promo son **solo indicadores visuales de solo lectura** (sombreados/apagados si no tienen la marca, a todo color si la tienen) — NO son interactivos en la tarjeta. El icono **Bulk** (Layers, verde esmeralda) **sí es interactivo**: tap togglea `is_bulk` directamente con `stopPropagation` (no abre el modal). Cuando `is_bulk=true`, muestra un badge numérico pequeño con `bulk_quantity`. El stepper de cantidad solo está en el modal de detalle.
 - Píldoras de región (9 regiones + "Todas"), scrollables horizontalmente, cada una con su propio progreso.
 - Buscador + filtros: tipo de Pokémon, estado de posesión, variante de carta, idioma de la carta, **Categoría** (Todas / Nacional / Megaevoluciones / Gigantamax / Formas Regionales, basado en `form_type`), y **Shiny/Promo** (filtros independientes, ej. "solo Shiny", "solo Promo", combinables entre sí y con el resto).
 - Badge de progreso Nacional (X/1025) y badge de progreso de Formas Especiales combinado (X/190) en la cabecera, visualmente diferenciados.
-- Navegación inferior fija: Pokédex / Dashboard / Configuración.
+- Navegación inferior fija: Pokédex / Dashboard / Sobrantes / Configuración.
 - Avatar del usuario visible en cabecera.
 
 ### 5.4 Modal de detalle de Pokémon
@@ -166,7 +168,8 @@ service cloud.firestore {
 - Si está activado:
   - **Tipo de carta**: Básica / Holo / Alternativa / Full Art, en **grid 2x2** (una sola opción excluyente).
   - **Idioma de la carta**: Español / Inglés / Chino / Coreano / Japonés / Otros.
-  - **Dos iconos independientes** (no excluyentes entre sí ni con lo anterior): **Shiny** e **Promo**, activables/desactivables con un toque **desde aquí, en el modal** (toggle directo, con upsert a Firestore). Icono sombreado/apagado cuando está desmarcado, a todo color cuando está marcado.
+  - **Tres iconos independientes** (no excluyentes entre sí ni con lo anterior): **Shiny**, **Promo** y **Bulk**, activables/desactivables con un toque **desde aquí, en el modal** (toggle directo, con upsert a Firestore). Icono sombreado/apagado cuando está desmarcado, a todo color cuando está marcado.
+  - **Stepper de cantidad Bulk** (visible solo cuando Bulk está activo): botones +/- con feedback inmediato en UI y escritura a Firestore debounceada 1.000 ms. Cantidad mínima: 1.
 - Botón "Guardar y Cerrar".
 - **Sin** campo de "valor estimado".
 
@@ -192,13 +195,26 @@ service cloud.firestore {
 - **Sin** selector de idioma de la app todavía (ES/EN) — planificado como fase futura dedicada (i18n completo), no forma parte de esta pantalla por ahora.
 - **Enlace a "Legal / Aviso de Privacidad"** (ver sección 12), visible también en Login/Registro.
 
+### 5.7 Pantalla /bulk — Sobrantes
+
+Ruta protegida `/bulk`, accesible desde la navegación principal (4.º ítem, icono Layers).
+
+- **Sin sprites/imágenes** de Pokémon — tabla de texto ligero.
+- **Contador único en cabecera**: suma total de copias (`bulk_quantity`) de todas las cartas marcadas como sobrante. (El contador de "tipos distintos" se eliminó — solo se muestra el total de copias.)
+- **Botón de info (HelpCircle)**: abre un modal centrado con 4 pasos explicando el flujo exportar → compartir → importar → comparar. Debajo de los botones de acción hay siempre visible una línea resumen corta con la misma idea.
+- **Filtro por región**: chips scrollables horizontalmente, solo mostrando las regiones que tengan al menos una carta en bulk.
+- **Vista de tabla** ordenada por número de Pokédex, con columnas `#` / `Nombre` / `Región` / `Cantidad`. La cantidad se colorea en escala de intensidad: 1 copia → `emerald-600`, 2 → `emerald-500`, 3-4 → `emerald-400`, 5-9 → `emerald-300`, 10+ → `emerald-200`. Responsive: en móvil la columna `#` se oculta del encabezado y se muestra como texto pequeño encima del nombre dentro de la celda; la región aparece debajo del nombre en la misma celda.
+- **Exportar JSON**: genera un `Blob` en cliente (sin llamadas a Firestore ni backend) con estructura `{ exported_by, exported_at, schema_version: 1, cards: [{ slug, pokedex_number, name, region, quantity }] }`. Nombre de archivo: `pokeretodex-bulk-<username>.json`.
+- **Importar + comparación con amigo**: input file (`.json`), todo procesado en el navegador con `FileReader`. Valida `schema_version` y `cards[]`, cruza contra la colección del usuario en `PokedexDataContext` (sin lecturas adicionales a Firestore). Resultado efímero mostrado en la misma tabla (con variante de color azul): "Tu amigo X podría darte N carta(s)". No se persiste nada.
+- Todos los datos provienen de `PokedexDataContext` — **cero lecturas adicionales a Firestore**.
+
 ---
 
-### 5.7 Comportamiento responsive (escritorio ≥1024px)
+### 5.8 Comportamiento responsive (escritorio ≥1024px)
 
 El mockup de Stitch se diseñó en formato móvil; estas son las adaptaciones obligatorias para navegador de escritorio (Windows):
 
-- **Navegación**: en móvil es una barra inferior fija (Pokédex / Dashboard / Configuración). En escritorio pasa a ser una **barra lateral izquierda fija** (sidebar), con los mismos 3 destinos, más visible y sin ocupar espacio vertical del contenido.
+- **Navegación**: en móvil es una barra inferior fija (Pokédex / Dashboard / Sobrantes / Configuración). En escritorio pasa a ser una **barra lateral izquierda fija** (sidebar), con los mismos 4 destinos, más visible y sin ocupar espacio vertical del contenido.
 - **Grid de Pokédex**: en móvil son ~3 columnas; en escritorio debe aprovechar el ancho disponible (ej. 6-8 columnas en pantallas anchas), manteniendo el tamaño de tarjeta legible, no estirándolas de forma desproporcionada.
 - **Filtros y buscador**: en móvil son chips scrollables horizontalmente; en escritorio pueden mostrarse todos a la vez sin scroll (barra de filtros completa) o en un panel lateral colapsable.
 - **Modal de detalle de Pokémon**: en móvil ocupa la pantalla completa (bottom sheet); en escritorio debe mostrarse como **modal centrado** o **panel lateral derecho**, no a pantalla completa, para no perder el contexto del grid detrás.
@@ -366,6 +382,28 @@ Realizada con el agente "Security Engineer" de Claude Code antes de desplegar a 
 **✅ Repositorio git**: inicializado, commiteado y subido a GitHub (`praisegaming/PokeRetoDex`, privado). Desplegado en Vercel con éxito, con las 6 variables de entorno de Firebase configuradas.
 
 ----
+## 16. Versionado de la aplicación
+
+### Constante APP_VERSION
+Definida en **`src/lib/constants.ts`** y consumida desde `configuracion/page.tsx` (pie de página, junto al enlace de Aviso Legal). Para actualizar la versión en una release futura, solo hay que editar ese archivo.
+
+### Convención: Semver estricto MAJOR.MINOR.PATCH
+| Segmento | Cuándo incrementar |
+|---|---|
+| MAJOR | Cambios incompatibles (migración de datos, rediseño de auth, rotura de estructura Firestore) |
+| MINOR | Funcionalidad nueva sin romper lo existente (nueva pantalla, nueva feature, i18n) |
+| PATCH | Fixes y correcciones sin añadir funcionalidad |
+
+### Historial de versiones
+| Versión | Descripción |
+|---|---|
+| 1.0.0 | Release inicial: auth, Pokédex Grid, modal de detalle, Dashboard, Configuración, i18n ES/EN, Legal, auditoría de seguridad, deploy a Vercel |
+| 1.0.1 | Fix post-release (correcciones menores) |
+| 1.1.0 | Feature Bulk completa: pantalla `/bulk`, tabla de sobrantes, exportar/importar JSON, comparación con amigo |
+
+----
 ## 15. Mejoras pendientes (backlog, no bloqueantes)
 
 - **Timeout en "Verificando sesión..."**: si un usuario es borrado desde Firebase Console (Authentication) mientras tenía una sesión activa en el navegador, al intentar recargar/volver a entrar la app se queda colgada indefinidamente en el estado "Verificando sesión..." sin ninguna forma de salir de ahí. Fix propuesto: añadir un timeout (ej. 5-8 segundos) a la verificación de sesión en el componente de loading/guard de rutas protegidas; si se supera ese tiempo sin resolver, tratarlo como sesión inválida, limpiar la cookie/estado local, y redirigir a `/login` (idealmente con un mensaje tipo "Tu sesión ha expirado o ya no es válida, inicia sesión de nuevo").
+
+- **Normalización de nombres de Pokémon en toda la app**: los slugs con formas compuestas (ej. `tauros-paldea-combat-breed`) se muestran actualmente tal cual, con guiones y sin capitalizar. Pendiente aplicar de forma transversal: reemplazar guiones por espacios + capitalizar cada palabra (ej. → "Tauros Paldea Combat Breed"). Afecta a: grid de Pokédex (tarjetas), modal de detalle, dashboard (cualquier nombre mostrado), y pantalla de Sobrantes (/bulk). Requiere una función utilitaria compartida tipo `formatPokemonName(slug: string): string` en `src/lib/utils.ts` o similar, para evitar duplicar lógica.

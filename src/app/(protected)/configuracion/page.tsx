@@ -14,6 +14,7 @@ import { AVATAR_SLUGS, formatAvatarName } from "@/lib/avatars";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/context/LanguageContext";
 import type { TFn } from "@/context/LanguageContext";
+import { APP_VERSION } from "@/lib/constants";
 
 // ─── Export helpers ───────────────────────────────────────────────────────────
 
@@ -355,14 +356,16 @@ export default function ConfiguracionPage() {
               </div>
             </section>
 
-            {/* ── Aviso Legal ─────────────────────────────────────────── */}
-            <div className="text-center py-1">
+            {/* ── Aviso Legal + versión ───────────────────────────────── */}
+            <div className="flex items-center justify-center gap-2 py-1">
               <Link
                 href="/legal"
                 className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
               >
                 {t("common.legalLink")}
               </Link>
+              <span className="text-gray-800 text-xs select-none">·</span>
+              <span className="text-xs text-gray-700 select-none tabular-nums">{APP_VERSION}</span>
             </div>
 
             {/* ── Idioma de la aplicación ──────────────────────────────── */}

@@ -37,6 +37,8 @@ export interface PokemonWithStatus extends PokemonDoc {
   language: CardLanguage | null;
   is_shiny: boolean;
   is_promo: boolean;
+  is_bulk: boolean;
+  bulk_quantity: number;
 }
 
 export interface UserProfile {
@@ -93,7 +95,7 @@ export function usePokedexData(uid: string | null): UsePokedexDataResult {
 
         const collectionMap = new Map<
           string,
-          { owned: boolean; variant: Variant | null; language: CardLanguage | null; is_shiny: boolean; is_promo: boolean }
+          { owned: boolean; variant: Variant | null; language: CardLanguage | null; is_shiny: boolean; is_promo: boolean; is_bulk: boolean; bulk_quantity: number }
         >();
         collectionSnap.forEach((d) => {
           const data = d.data();
@@ -103,6 +105,8 @@ export function usePokedexData(uid: string | null): UsePokedexDataResult {
             language: (data.language as CardLanguage) ?? null,
             is_shiny: data.is_shiny ?? false,
             is_promo: data.is_promo ?? false,
+            is_bulk: data.is_bulk ?? false,
+            bulk_quantity: data.bulk_quantity ?? 0,
           });
         });
 
@@ -124,6 +128,8 @@ export function usePokedexData(uid: string | null): UsePokedexDataResult {
             language: entry?.language ?? null,
             is_shiny: entry?.is_shiny ?? false,
             is_promo: entry?.is_promo ?? false,
+            is_bulk: entry?.is_bulk ?? false,
+            bulk_quantity: entry?.bulk_quantity ?? 0,
             form_type: (data.form_type as FormType) ?? null,
           };
         });

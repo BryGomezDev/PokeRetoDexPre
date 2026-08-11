@@ -32,6 +32,11 @@ interface PokedexDataContextValue {
     field: "is_shiny" | "is_promo",
     value: boolean
   ) => Promise<void>;
+  updateBulkStatus: (
+    slug: string,
+    isBulk: boolean,
+    quantity: number
+  ) => Promise<void>;
 }
 
 const PokedexDataContext = createContext<PokedexDataContextValue>({
@@ -41,6 +46,7 @@ const PokedexDataContext = createContext<PokedexDataContextValue>({
   error: null,
   updatePokemonStatus: async () => {},
   updateSpecialFlag: async () => {},
+  updateBulkStatus: async () => {},
 });
 
 export function PokedexDataProvider({ children }: { children: React.ReactNode }) {
@@ -89,7 +95,7 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
 
         const collectionMap = new Map<
           string,
-          { owned: boolean; variant: Variant | null; language: CardLanguage | null; is_shiny: boolean; is_promo: boolean }
+          { owned: boolean; variant: Variant | null; language: CardLanguage | null; is_shiny: boolean; is_promo: boolean; is_bulk: boolean; bulk_quantity: number }
         >();
         collectionSnap.forEach((d) => {
           const data = d.data();
@@ -99,6 +105,8 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
             language: (data.language as CardLanguage) ?? null,
             is_shiny: data.is_shiny ?? false,
             is_promo: data.is_promo ?? false,
+            is_bulk: data.is_bulk ?? false,
+            bulk_quantity: data.bulk_quantity ?? 0,
           });
         });
 
@@ -120,6 +128,8 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
             language: entry?.language ?? null,
             is_shiny: entry?.is_shiny ?? false,
             is_promo: entry?.is_promo ?? false,
+            is_bulk: entry?.is_bulk ?? false,
+            bulk_quantity: entry?.bulk_quantity ?? 0,
             form_type: (data.form_type as FormType) ?? null,
           };
         });
@@ -152,6 +162,8 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
                 language: safeLanguage,
                 is_shiny: owned ? p.is_shiny : false,
                 is_promo: owned ? p.is_promo : false,
+                is_bulk: owned ? p.is_bulk : false,
+                bulk_quantity: owned ? p.bulk_quantity : 0,
               }
             : p
         )
@@ -166,6 +178,8 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
       if (!owned) {
         update.is_shiny = false;
         update.is_promo = false;
+        update.is_bulk = false;
+        update.bulk_quantity = 0;
       }
 
       await setDoc(doc(db, "users", uid, "collection", slug), update, { merge: true });
@@ -188,8 +202,25 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
     [uid]
   );
 
+  const updateBulkStatus = useCallback(
+    async (slug: string, isBulk: boolean, quantity: number) => {
+      if (!uid) return;
+      setPokemon((prev) =>
+        prev.map((p) =>
+          p.slug === slug ? { ...p, is_bulk: isBulk, bulk_quantity: quantity } : p
+        )
+      );
+      await setDoc(
+        doc(db, "users", uid, "collection", slug),
+        { is_bulk: isBulk, bulk_quantity: quantity, updated_at: serverTimestamp() },
+        { merge: true }
+      );
+    },
+    [uid]
+  );
+
   return (
-    <PokedexDataContext.Provider value={{ pokemon, userProfile, loading, error, updatePokemonStatus, updateSpecialFlag }}>
+    <PokedexDataContext.Provider value={{ pokemon, userProfile, loading, error, updatePokemonStatus, updateSpecialFlag, updateBulkStatus }}>
       {children}
     </PokedexDataContext.Provider>
   );
