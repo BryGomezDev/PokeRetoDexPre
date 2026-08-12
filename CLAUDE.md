@@ -413,6 +413,7 @@ Ej: "pokedex_pokemon_cache_v1"
 | 1.0.1 | Fix post-release (correcciones menores) |
 | 1.1.0 | Feature Bulk completa: pantalla `/bulk`, tabla de sobrantes, exportar/importar JSON, comparación con amigo |
 | 1.1.1 | Fixes de robustez: guard de sesión colgado centralizado en layout, detección de cuenta eliminada (onSnapshot + logout forzado + banner), caché de /pokemon en sessionStorage validada, badge de Bulk corregido en mobile |
+| 1.1.2 | Fix build Vercel: useSearchParams en /login envuelto en Suspense (AccountDeletedBanner extraído a componente hijo) |
 
 ----
 ## 15. Mejoras pendientes (backlog, no bloqueantes)

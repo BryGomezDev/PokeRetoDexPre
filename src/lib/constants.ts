@@ -1,4 +1,4 @@
-export const APP_VERSION = "1.1.1";
+export const APP_VERSION = "1.1.2";
 
 // Bump this number manually ONLY when the /pokemon population script is re-run
 // and the base data changes (new Pokémon, fixed sprites, etc.). Incrementing
