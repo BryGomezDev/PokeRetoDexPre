@@ -9,7 +9,6 @@ import { useAuth } from "@/context/AuthContext";
 import { usePokedexContext } from "@/context/PokedexDataContext";
 import type { PokemonWithStatus } from "@/hooks/usePokedexData";
 import { Navigation } from "@/components/Navigation";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { AVATAR_SLUGS, formatAvatarName } from "@/lib/avatars";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/context/LanguageContext";
@@ -122,7 +121,7 @@ function DownloadIcon() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ConfiguracionPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const uid = user?.uid ?? null;
   const { language, setLanguage, t } = useLanguage();
 
@@ -194,8 +193,6 @@ export default function ConfiguracionPage() {
       setExporting(false);
     }
   }
-
-  if (authLoading || !user) return <LoadingSpinner message={t("common.verifyingSession")} />;
 
   return (
     <div className="flex min-h-screen bg-gray-950 text-white">

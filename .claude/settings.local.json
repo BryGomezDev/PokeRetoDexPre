@@ -17,7 +17,9 @@
       "Bash(Select-Object FullName)",
       "Bash(Format-Table -HideTableHeaders)",
       "PowerShell(npm run *)",
-      "Bash(Remove-Item *)"
+      "Bash(Remove-Item *)",
+      "Skill(update-config)",
+      "Bash(git add *)"
     ]
   }
 }

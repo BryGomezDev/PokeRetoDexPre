@@ -7,13 +7,11 @@ import { Sparkles, Ticket } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { useAuth } from "@/context/AuthContext";
 import { usePokedexContext } from "@/context/PokedexDataContext";
 import type { Variant, CardLanguage } from "@/hooks/usePokedexData";
 import { Navigation } from "@/components/Navigation";
 import { PokemonCard } from "@/components/PokemonCard";
 import { PokemonModal } from "@/components/PokemonModal";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { useLanguage } from "@/context/LanguageContext";
 import { cn } from "@/lib/utils";
 
@@ -79,7 +77,6 @@ function SignOutIcon() {
 
 export default function PokedexPage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
   const { t } = useLanguage();
 
   const {
@@ -192,8 +189,6 @@ export default function PokedexPage() {
     document.cookie = "session=; path=/; max-age=0";
     router.push("/login");
   }
-
-  if (authLoading || !user) return <LoadingSpinner message={t("common.verifyingSession")} />;
 
   return (
     <div className="flex min-h-screen bg-gray-950 text-white">

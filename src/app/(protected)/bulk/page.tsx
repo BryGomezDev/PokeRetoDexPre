@@ -2,11 +2,9 @@
 
 import { useMemo, useState, useRef } from "react";
 import { HelpCircle } from "lucide-react";
-import { useAuth } from "@/context/AuthContext";
 import { usePokedexContext } from "@/context/PokedexDataContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { Navigation } from "@/components/Navigation";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { cn } from "@/lib/utils";
 
 const REGIONS = [
@@ -188,7 +186,6 @@ function InfoModal({ onClose }: { onClose: () => void }) {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function BulkPage() {
-  const { user, loading: authLoading } = useAuth();
   const { pokemon, userProfile, loading } = usePokedexContext();
   const { t } = useLanguage();
   const [regionFilter, setRegionFilter] = useState<string | null>(null);
@@ -289,8 +286,6 @@ export default function BulkPage() {
     reader.readAsText(file);
     e.target.value = "";
   }
-
-  if (authLoading || !user) return <LoadingSpinner message={t("common.verifyingSession")} />;
 
   return (
     <div className="flex min-h-screen bg-gray-950 text-white">

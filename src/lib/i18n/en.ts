@@ -14,6 +14,7 @@ export const en = {
     errorEmptyPassword: "Enter your password.",
     errorInvalid: "Invalid username or password.",
     errorGeneric: "An error occurred. Try again.",
+    bannerAccountNotFound: "Your account no longer exists or has been removed. If you think this is an error, contact the administrator.",
   },
   registro: {
     username: "Username",

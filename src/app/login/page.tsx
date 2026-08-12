@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase";
@@ -15,12 +15,25 @@ import { LangToggle } from "@/components/LangToggle";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { t } = useLanguage();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showDeletedBanner, setShowDeletedBanner] = useState(false);
+
+  // Detect forced-logout redirect from a deleted Firestore user document.
+  // Capture the reason in local state, then clean the URL immediately so
+  // the back button doesn't restore the error param on subsequent visits.
+  useEffect(() => {
+    if (searchParams.get("reason") === "account_not_found") {
+      setShowDeletedBanner(true);
+      router.replace("/login", { scroll: false });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function getLoginError(code: string): string {
     switch (code) {
@@ -79,6 +92,16 @@ export default function LoginPage() {
             <div className="flex justify-end mb-4">
               <LangToggle />
             </div>
+
+            {/* Banner: account deleted while session was active */}
+            {showDeletedBanner && (
+              <p
+                role="alert"
+                className="text-yellow-300 text-sm bg-yellow-950/40 border border-yellow-700/50 rounded-md px-3 py-2 mb-2"
+              >
+                {t("login.bannerAccountNotFound")}
+              </p>
+            )}
 
             <form onSubmit={handleSubmit} noValidate className="space-y-5">
               {/* Username field */}

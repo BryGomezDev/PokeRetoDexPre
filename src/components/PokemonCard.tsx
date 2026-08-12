@@ -88,14 +88,14 @@ export function PokemonCard({ pokemon, onClick }: PokemonCardProps) {
       {pokemon.owned && (
         <div className="absolute top-0 right-0 flex flex-col">
           {/* Shiny / Promo: decorative read-only, clicks pass through to card */}
-          <div className="w-8 h-8 flex items-center justify-center pointer-events-none" aria-hidden="true">
+          <div className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center pointer-events-none" aria-hidden="true">
             <Sparkles size={13} className={cn(pokemon.is_shiny ? "text-yellow-400" : "text-gray-600")} />
           </div>
-          <div className="w-8 h-8 flex items-center justify-center pointer-events-none" aria-hidden="true">
+          <div className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center pointer-events-none" aria-hidden="true">
             <Ticket size={13} className={cn(pokemon.is_promo ? "text-blue-400" : "text-gray-600")} />
           </div>
           {/* Bulk: decorative read-only, clicks pass through to card */}
-          <div className="w-8 h-8 flex items-center justify-center relative pointer-events-none" aria-hidden="true">
+          <div className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center relative pointer-events-none" aria-hidden="true">
             <Layers size={13} className={cn(pokemon.is_bulk ? "text-emerald-400" : "text-gray-600")} />
             {pokemon.is_bulk && pokemon.bulk_quantity > 0 && (
               <span className="absolute bottom-0.5 right-0.5 text-[7px] font-bold text-emerald-400 leading-none">

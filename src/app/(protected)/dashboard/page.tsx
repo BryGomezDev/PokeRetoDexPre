@@ -7,10 +7,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { useAuth } from "@/context/AuthContext";
 import { usePokedexContext } from "@/context/PokedexDataContext";
 import { Navigation } from "@/components/Navigation";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { useLanguage } from "@/context/LanguageContext";
 import { cn } from "@/lib/utils";
 
@@ -80,7 +78,6 @@ function SignOutIcon() {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
   const { t } = useLanguage();
 
   const { pokemon, userProfile, loading: dataLoading, error } = usePokedexContext();
@@ -151,8 +148,6 @@ export default function DashboardPage() {
     document.cookie = "session=; path=/; max-age=0";
     router.push("/login");
   }
-
-  if (authLoading || !user) return <LoadingSpinner message={t("common.verifyingSession")} />;
 
   return (
     <div className="flex min-h-screen bg-gray-950 text-white">

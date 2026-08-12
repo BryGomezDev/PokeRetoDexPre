@@ -5,16 +5,22 @@ import {
   collection,
   doc,
   getDocs,
-  getDoc,
+  onSnapshot,
   setDoc,
   orderBy,
   query,
   serverTimestamp,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { signOut } from "firebase/auth";
+import { db, auth } from "@/lib/firebase";
 import { useAuth } from "./AuthContext";
 import { useLanguage } from "./LanguageContext";
-import type { FormType, PokemonWithStatus, UserProfile, Variant, CardLanguage } from "@/hooks/usePokedexData";
+import type { FormType, PokemonDoc, PokemonWithStatus, UserProfile, Variant, CardLanguage } from "@/hooks/usePokedexData";
+import { POKEMON_DATA_VERSION } from "@/lib/constants";
+
+// Key changes with POKEMON_DATA_VERSION, automatically invalidating stale caches
+// when the /pokemon population script is re-run with new data.
+const POKEMON_CACHE_KEY = `pokedex_pokemon_cache_v${POKEMON_DATA_VERSION}`;
 
 interface PokedexDataContextValue {
   pokemon: PokemonWithStatus[];
@@ -69,30 +75,96 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
     }
     const uidValue = uid;
 
+    // Persistent listener on /users/{uid} — replaces the one-time getDoc.
+    // Handles the initial profile read and detects document deletion while the session is active.
+    const unsubscribeUserDoc = onSnapshot(
+      doc(db, "users", uidValue),
+      (snap) => {
+        if (!snap.exists()) {
+          // Forced logout: document deleted while Auth session is still valid.
+          // State is cleared before signOut to avoid components reading stale data
+          // during the transition window between signOut and the Auth guard redirect.
+          // The session cookie must be cleared here — the middleware uses it (not Firebase
+          // Auth state) to gate protected routes. Without this, window.location.href to
+          // /login triggers a middleware redirect back to /pokedex (cookie still "1"),
+          // leaving the app stuck on the "Verificando sesión..." spinner forever.
+          setPokemon([]);
+          setUserProfile(null);
+          setLoading(true);
+          document.cookie = "session=; path=/; max-age=0";
+          signOut(auth).catch(console.error);
+          window.location.href = "/login?reason=account_not_found";
+          return;
+        }
+        const d = snap.data();
+        setUserProfile({
+          username: d.username ?? "Entrenador",
+          avatar_pokemon_slug: d.avatar_pokemon_slug ?? "pikachu",
+        });
+        // Single Firestore read shared with LanguageContext — no duplicate getDoc
+        const lang = d.app_language;
+        if (lang === "en" || lang === "es") {
+          syncFromFirestore(lang);
+        }
+      },
+      (err) => {
+        console.error("[PokedexDataContext] userDoc listener:", err);
+      }
+    );
+
     async function load() {
       try {
         setLoading(true);
         setError(null);
 
-        const [pokemonSnap, collectionSnap, userDocSnap] = await Promise.all([
-          getDocs(query(collection(db, "pokemon"), orderBy("sort_order"))),
+        // --- 1. Try to read /pokemon raw data from sessionStorage cache ---
+        // Cache is keyed by POKEMON_DATA_VERSION so bumping the constant
+        // automatically invalidates it without any extra cleanup logic.
+        let rawPokemon: PokemonDoc[] | null = null;
+        try {
+          const cached = sessionStorage.getItem(POKEMON_CACHE_KEY);
+          if (cached) rawPokemon = JSON.parse(cached) as PokemonDoc[];
+        } catch {
+          // sessionStorage unavailable (private browsing, browser policy)
+          // or JSON corrupted — fall through to Firestore read below.
+        }
+
+        // --- 2. Fetch in parallel: always /collection (user data, never cached);
+        //        only /pokemon if cache missed ---
+        const [pokemonSnapOrNull, collectionSnap] = await Promise.all([
+          rawPokemon
+            ? Promise.resolve(null)
+            : getDocs(query(collection(db, "pokemon"), orderBy("sort_order"))),
           getDocs(collection(db, "users", uidValue, "collection")),
-          getDoc(doc(db, "users", uidValue)),
         ]);
 
-        if (userDocSnap.exists()) {
-          const d = userDocSnap.data();
-          setUserProfile({
-            username: d.username ?? "Entrenador",
-            avatar_pokemon_slug: d.avatar_pokemon_slug ?? "pikachu",
+        // --- 3. On cache miss: extract raw fields and persist to sessionStorage ---
+        if (!rawPokemon) {
+          // pokemonSnapOrNull is guaranteed non-null when rawPokemon is null
+          rawPokemon = pokemonSnapOrNull!.docs.map((d) => {
+            const data = d.data();
+            return {
+              slug: d.id,
+              pokedex_number: data.pokedex_number ?? 0,
+              form_index: data.form_index ?? 0,
+              sort_order: data.sort_order ?? 0,
+              name: data.name ?? d.id,
+              region: data.region ?? "unknown",
+              types: data.types ?? [],
+              sprite_url: data.sprite_url ?? "",
+              is_special_form: data.is_special_form ?? false,
+              form_type: (data.form_type as FormType) ?? null,
+            };
           });
-          // Single Firestore read shared with LanguageContext — no duplicate getDoc
-          const lang = d.app_language;
-          if (lang === "en" || lang === "es") {
-            syncFromFirestore(lang);
+          try {
+            sessionStorage.setItem(POKEMON_CACHE_KEY, JSON.stringify(rawPokemon));
+          } catch {
+            // setItem failed (quota, disabled) — data is in memory for this
+            // session; next F5 will re-read from Firestore. No-op.
           }
         }
 
+        // --- 4. Build user collection map from always-fresh Firestore read ---
         const collectionMap = new Map<
           string,
           { owned: boolean; variant: Variant | null; language: CardLanguage | null; is_shiny: boolean; is_promo: boolean; is_bulk: boolean; bulk_quantity: number }
@@ -110,19 +182,11 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
           });
         });
 
-        const combined: PokemonWithStatus[] = pokemonSnap.docs.map((d) => {
-          const data = d.data();
-          const entry = collectionMap.get(d.id);
+        // --- 5. Merge cached/fetched raw pokemon with fresh user collection ---
+        const combined: PokemonWithStatus[] = rawPokemon.map((p) => {
+          const entry = collectionMap.get(p.slug);
           return {
-            slug: d.id,
-            pokedex_number: data.pokedex_number ?? 0,
-            form_index: data.form_index ?? 0,
-            sort_order: data.sort_order ?? 0,
-            name: data.name ?? d.id,
-            region: data.region ?? "unknown",
-            types: data.types ?? [],
-            sprite_url: data.sprite_url ?? "",
-            is_special_form: data.is_special_form ?? false,
+            ...p,
             owned: entry?.owned ?? false,
             variant: entry?.variant ?? null,
             language: entry?.language ?? null,
@@ -130,7 +194,6 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
             is_promo: entry?.is_promo ?? false,
             is_bulk: entry?.is_bulk ?? false,
             bulk_quantity: entry?.bulk_quantity ?? 0,
-            form_type: (data.form_type as FormType) ?? null,
           };
         });
 
@@ -144,6 +207,10 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
     }
 
     load();
+
+    return () => {
+      unsubscribeUserDoc();
+    };
   }, [uid, syncFromFirestore]);
 
   const updatePokemonStatus = useCallback(

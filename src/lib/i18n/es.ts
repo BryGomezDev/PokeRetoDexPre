@@ -14,6 +14,7 @@ export const es = {
     errorEmptyPassword: "Introduce tu contraseña.",
     errorInvalid: "Usuario o contraseña incorrectos.",
     errorGeneric: "Ocurrió un error. Inténtalo de nuevo.",
+    bannerAccountNotFound: "Tu cuenta ya no existe o ha sido eliminada. Si crees que es un error, contacta con el administrador.",
   },
   registro: {
     username: "Nombre de usuario",

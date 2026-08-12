@@ -387,6 +387,18 @@ Realizada con el agente "Security Engineer" de Claude Code antes de desplegar a 
 ### Constante APP_VERSION
 Definida en **`src/lib/constants.ts`** y consumida desde `configuracion/page.tsx` (pie de página, junto al enlace de Aviso Legal). Para actualizar la versión en una release futura, solo hay que editar ese archivo.
 
+### Constante POKEMON_DATA_VERSION
+Definida también en **`src/lib/constants.ts`**, **independiente de APP_VERSION** (son versiones que cambian por razones distintas). Controla la key de sessionStorage usada como caché de la colección `/pokemon`:
+
+```
+Key: pokedex_pokemon_cache_v${POKEMON_DATA_VERSION}
+Ej: "pokedex_pokemon_cache_v1"
+```
+
+**Solo subir este número si se vuelve a correr el script de población de `/pokemon` y los datos base cambian** (nuevo Pokémon, corrección de sprites, etc.). Al cambiar el número, la key antigua queda huérfana en sessionStorage de los usuarios y la nueva carga desde Firestore sin limpiar manualmente nada. Un cambio de `APP_VERSION` (release de UI) NO debe subir `POKEMON_DATA_VERSION` — son independientes intencionadamente para no invalidar la caché sin motivo.
+
+**Qué se cachea**: solo los campos raw del documento `/pokemon` (`PokemonDoc`: `slug, pokedex_number, form_index, sort_order, name, region, types, sprite_url, is_special_form, form_type`). **Nunca** se cachea el objeto `PokemonWithStatus` ni ningún campo de `/users/{uid}/collection` — la colección del usuario siempre se lee fresca de Firestore en cada sesión/recarga.
+
 ### Convención: Semver estricto MAJOR.MINOR.PATCH
 | Segmento | Cuándo incrementar |
 |---|---|
@@ -400,10 +412,15 @@ Definida en **`src/lib/constants.ts`** y consumida desde `configuracion/page.tsx
 | 1.0.0 | Release inicial: auth, Pokédex Grid, modal de detalle, Dashboard, Configuración, i18n ES/EN, Legal, auditoría de seguridad, deploy a Vercel |
 | 1.0.1 | Fix post-release (correcciones menores) |
 | 1.1.0 | Feature Bulk completa: pantalla `/bulk`, tabla de sobrantes, exportar/importar JSON, comparación con amigo |
+| 1.1.1 | Fixes de robustez: guard de sesión colgado centralizado en layout, detección de cuenta eliminada (onSnapshot + logout forzado + banner), caché de /pokemon en sessionStorage validada, badge de Bulk corregido en mobile |
 
 ----
 ## 15. Mejoras pendientes (backlog, no bloqueantes)
 
-- **Timeout en "Verificando sesión..."**: si un usuario es borrado desde Firebase Console (Authentication) mientras tenía una sesión activa en el navegador, al intentar recargar/volver a entrar la app se queda colgada indefinidamente en el estado "Verificando sesión..." sin ninguna forma de salir de ahí. Fix propuesto: añadir un timeout (ej. 5-8 segundos) a la verificación de sesión en el componente de loading/guard de rutas protegidas; si se supera ese tiempo sin resolver, tratarlo como sesión inválida, limpiar la cookie/estado local, y redirigir a `/login` (idealmente con un mensaje tipo "Tu sesión ha expirado o ya no es válida, inicia sesión de nuevo").
+- **~~Detección de documento /users/{uid} eliminado~~ ✅ Resuelto**: `PokedexDataContext` sustituye el `getDoc` inicial de `/users/{uid}` por un `onSnapshot` persistente (coste neto = 0 lecturas extra). Si el documento es borrado mientras la sesión de Auth sigue activa, el listener detecta `snap.exists() === false` y ejecuta el logout forzado en este orden: (1) limpiar estado local del contexto, (2) `signOut(auth)`, (3) redirigir a `/login?reason=account_not_found`. La pantalla de login muestra un banner amarillo informativo si recibe ese parámetro y limpia la URL inmediatamente con `router.replace`. Archivos afectados: `src/context/PokedexDataContext.tsx`, `src/app/login/page.tsx`, `src/lib/i18n/es.ts`, `src/lib/i18n/en.ts`.
+
+- **~~Caché de /pokemon en sessionStorage~~ ✅ Resuelto y validado en navegador**: `PokedexDataContext` intenta leer los datos raw de `/pokemon` desde `sessionStorage` (key `pokedex_pokemon_cache_v${POKEMON_DATA_VERSION}`) antes de ir a Firestore. Si hay hit de caché, se ahorran 1215 lecturas en cada F5. La colección del usuario (`/users/{uid}/collection`) nunca se cachea — siempre se lee fresca de Firestore. Ambos read y write de sessionStorage van en `try/catch` independientes: si sessionStorage no está disponible o falla el `setItem`, la app sigue funcionando normalmente leyendo de Firestore. La invalidación es por versión: subir `POKEMON_DATA_VERSION` en `src/lib/constants.ts` cambia la key y fuerza una nueva lectura. **Validación confirmada en navegador (2026-08-12):** cache miss en primera carga (1216 docs leídos de Firestore) y cache hit en F5 dentro de la misma pestaña (0 lecturas a Firestore). Logs de depuración temporales añadidos y retirados tras confirmar el comportamiento correcto.
+
+- **~~Timeout en "Verificando sesión..."~~ ✅ Resuelto**: Causa raíz identificada: el guard `if (authLoading || !user)` en cada página mostraba el spinner de forma indefinida cuando `authLoading` llegaba a `false` pero `user` era `null` (cookie `session=1` presente pero Firebase Auth sin sesión activa). Solución: el guard se centralizó en `src/app/(protected)/layout.tsx` (ahora client component) con un `useEffect` que detecta `!authLoading && !user`, limpia la cookie y llama a `router.replace("/login")`. Se eliminaron los guards duplicados de las 4 páginas protegidas (`pokedex`, `dashboard`, `bulk`, `configuracion`) junto con sus imports de `useAuth` / `LoadingSpinner` redundantes. El guard siempre termina en uno de dos estados: sesión verificada (renderiza `PokedexDataProvider` + hijos) o redirección a `/login` — nunca un cuelgue indefinido.
 
 - **Normalización de nombres de Pokémon en toda la app**: los slugs con formas compuestas (ej. `tauros-paldea-combat-breed`) se muestran actualmente tal cual, con guiones y sin capitalizar. Pendiente aplicar de forma transversal: reemplazar guiones por espacios + capitalizar cada palabra (ej. → "Tauros Paldea Combat Breed"). Afecta a: grid de Pokédex (tarjetas), modal de detalle, dashboard (cualquier nombre mostrado), y pantalla de Sobrantes (/bulk). Requiere una función utilitaria compartida tipo `formatPokemonName(slug: string): string` en `src/lib/utils.ts` o similar, para evitar duplicar lógica.
