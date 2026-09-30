@@ -41,3 +41,6 @@ next-env.d.ts
 
 # spike research cache (raw API dumps, not committed)
 scripts/spike/out/
+
+# Claude Code local settings (contain local paths, not for public repos)
+.claude/settings.local.json
