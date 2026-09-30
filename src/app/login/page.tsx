@@ -81,7 +81,7 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       const usernameLower = username.trim().toLowerCase();
-      const email = `${usernameLower}@pokeretodex.firebaseapp.com`;
+      const email = `${usernameLower}@${process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN}`;
       await signInWithEmailAndPassword(auth, email, password);
       // Set session cookie for middleware (30 days)
       document.cookie = "session=1; path=/; max-age=2592000; SameSite=Lax; Secure";

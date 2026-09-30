@@ -102,7 +102,7 @@ export default function RegistroPage() {
     let uid: string;
     try {
       const usernameLower = username.trim().toLowerCase();
-      const email = `${usernameLower}@pokeretodex.firebaseapp.com`;
+      const email = `${usernameLower}@${process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN}`;
       const credential = await createUserWithEmailAndPassword(auth, email, password);
       uid = credential.user.uid;
     } catch (err: unknown) {
