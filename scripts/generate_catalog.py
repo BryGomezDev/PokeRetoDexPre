@@ -449,6 +449,7 @@ def main() -> None:
     digital_excluded = 0
     doubtful_sets: set[str] = set()
     consecutive_errors = 0
+    failed_dex_ids: list[int] = []
     rarity_counts: dict[Optional[str], int] = {}
     null_rarity_cards = 0
 
@@ -461,6 +462,7 @@ def main() -> None:
         raw_cards = fetch_cards_for_dex_id(dex_id, no_cache=args.no_cache)
 
         if raw_cards is None:
+            failed_dex_ids.append(dex_id)
             consecutive_errors += 1
             log.error(
                 "API error for dexId=%d (%d/%d consecutive failures).",
@@ -468,9 +470,9 @@ def main() -> None:
             )
             if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                 log.error(
-                    "Aborting: %d consecutive API errors. "
+                    "Aborting: %d consecutive API errors. Failed dexIds so far: %s. "
                     "Retry with existing files skipped automatically.",
-                    MAX_CONSECUTIVE_ERRORS,
+                    MAX_CONSECUTIVE_ERRORS, failed_dex_ids,
                 )
                 sys.exit(2)
             continue
@@ -555,6 +557,7 @@ def main() -> None:
             "set_ids_prefetched": len(digital_set_ids),
             "cards_excluded": digital_excluded,
         },
+        "failed_dex_ids": sorted(failed_dex_ids),
         "doubtful_sets": sorted(doubtful_sets),
         "rarities": {
             "distinct_count": len(rarity_counts),
@@ -595,6 +598,12 @@ def main() -> None:
     log.info("  Avg req/s          : %.2f", avg_rps)
     log.info("  Peak req/s (10s)   : %.2f", peak_rps)
     log.info("=" * 60)
+    if failed_dex_ids and not args.dry_run:
+        log.warning(
+            "FAILED dexIds (%d): %s — rerun without --force to retry.",
+            len(failed_dex_ids), sorted(failed_dex_ids),
+        )
+        sys.exit(1)
 
 
 if __name__ == "__main__":
