@@ -10,5 +10,6 @@ export const POKEMON_DATA_VERSION = 1;
 // Bump this number ONLY when the TCGdex catalog is regenerated and the card
 // data changes (new sets, rarity mapping update, new languages). Independent
 // of APP_VERSION and POKEMON_DATA_VERSION on purpose.
-// The version is used in the catalog URL path: public/catalog/v{N}/{lang}/{dexId}.json
+// The version is used in the catalog URL path: public/catalog/v{N}/{dexId}.json
+// Each file contains {"en":[...],"es":[...]} — both languages in one fetch.
 export const TCGDEX_CATALOG_VERSION = 1;
