@@ -19,6 +19,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 import time
 from typing import Optional
@@ -40,7 +41,7 @@ HEADERS = {
     "User-Agent": "PokeRetoDex-catalog",
     "Content-Type": "application/json",
 }
-SLEEP_BETWEEN_REQUESTS = 0.2  # seconds – be polite to TCGdex
+SLEEP_BETWEEN_REQUESTS = 0.5  # seconds – ≤ 2 req/s
 MAX_RETRIES = 3
 RETRY_BACKOFF = [1, 2, 4]     # seconds for attempt 1, 2, 3
 
@@ -48,6 +49,16 @@ RETRY_BACKOFF = [1, 2, 4]     # seconds for attempt 1, 2, 3
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_SCRIPT_DIR)
 CATALOG_BASE = os.path.join(_PROJECT_ROOT, "public", "catalog", "v1")
+
+# Series IDs from GET /v2/en/series that represent digital-only games.
+# Verified 2026-10-04: "tcgp" = "Pokémon TCG Pocket" (15 sets: A1, A1a, A2, …, B2a).
+# Source: GET https://api.tcgdex.net/v2/en/series/tcgp → {"id":"tcgp","name":"Pokémon TCG Pocket"}
+DIGITAL_SERIES_IDS: frozenset[str] = frozenset({"tcgp"})
+
+# Cross-check regex: Pocket set IDs start with an uppercase letter followed by a digit,
+# or with "P-" (e.g. A1, A1a, B2b, P-A).  Used only to flag discrepancies with the
+# serie-based filter — never as the sole exclusion criterion.
+_POCKET_ID_PATTERN = re.compile(r"^[A-Z]\d|^P-")
 
 # ── Rarity → variant mapping ──────────────────────────────────────────────────
 # Copied verbatim from scripts/spike/rarities_and_variants.py (RARITY_MAP_HINTS),
@@ -171,7 +182,8 @@ def _get_with_retry(url: str) -> Optional[list]:
 # ── ES index ──────────────────────────────────────────────────────────────────
 
 def fetch_es_index() -> dict[str, dict]:
-    """Fetch the full ES card index and return dict[card_id, {id, localId, name, image}]."""
+    """Fetch the full ES card index and return dict[card_id, {id, localId, name, image}].
+    Called once per execution before the main dexId loop (Gap C)."""
     log.info("Fetching ES card index from %s/es/cards …", BASE_URL)
     data = _get_with_retry(f"{BASE_URL}/es/cards")
     if not data or not isinstance(data, list):
@@ -180,6 +192,28 @@ def fetch_es_index() -> dict[str, dict]:
     es_map = {card["id"]: card for card in data if isinstance(card, dict) and "id" in card}
     log.info("ES index loaded: %d cards.", len(es_map))
     return es_map
+
+
+def fetch_digital_set_ids(digital_series: frozenset[str]) -> frozenset[str]:
+    """Return set IDs that belong to digital-only series (e.g. tcgp).
+
+    Calls GET /v2/en/series/{serie_id} once per digital serie — typically a single call.
+    Called once per execution before the main dexId loop.
+    """
+    all_ids: set[str] = set()
+    for serie_id in sorted(digital_series):
+        log.info("Fetching set list for digital serie %r from %s/en/series/%s …",
+                 serie_id, BASE_URL, serie_id)
+        data = _get_with_retry(f"{BASE_URL}/en/series/{serie_id}")
+        if not data or not isinstance(data, dict):
+            log.warning("Could not fetch serie %r — digital filter may be incomplete.", serie_id)
+            continue
+        for s in data.get("sets", []):
+            sid = s.get("id")
+            if sid:
+                all_ids.add(sid)
+    log.info("Digital set IDs loaded: %d sets from series %s.", len(all_ids), sorted(digital_series))
+    return frozenset(all_ids)
 
 
 # ── GraphQL query ─────────────────────────────────────────────────────────────
@@ -208,8 +242,10 @@ query CardsByDexId($dexId: Int!) {
 """
 
 
-def fetch_cards_for_dex_id(dex_id: int) -> list[dict]:
-    """Return list of raw card dicts from TCGdex for a given national dex ID."""
+def fetch_cards_for_dex_id(dex_id: int) -> Optional[list[dict]]:
+    """Return list of raw card dicts from TCGdex for a given national dex ID.
+    Returns None on API/network error (used to track consecutive failures).
+    Returns [] when the API succeeded but found no cards for this dexId."""
     payload = {
         "query": GRAPHQL_QUERY,
         "variables": {"dexId": dex_id},
@@ -217,11 +253,11 @@ def fetch_cards_for_dex_id(dex_id: int) -> list[dict]:
     result = _post_with_retry(payload)
     if result is None:
         log.error("GraphQL query failed for dexId=%d.", dex_id)
-        return []
+        return None
     errors = result.get("errors")
     if errors:
         log.error("GraphQL errors for dexId=%d: %s", dex_id, errors)
-        return []
+        return None
     cards = (result.get("data") or {}).get("cards") or []
     return cards
 
@@ -287,6 +323,9 @@ def _write_json(path: str, data: list, dry_run: bool) -> None:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+MAX_CONSECUTIVE_ERRORS = 3
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate TCG catalog JSON files under public/catalog/v1/."
@@ -306,12 +345,16 @@ def main() -> None:
     if args.dry_run:
         log.info("DRY RUN — no files will be written.")
 
+    digital_set_ids = fetch_digital_set_ids(DIGITAL_SERIES_IDS)
     es_map = fetch_es_index()
 
     total_en_files = 0
     total_es_files = 0
     total_cards = 0
     skipped = 0
+    digital_excluded = 0
+    doubtful_sets: set[str] = set()
+    consecutive_errors = 0
 
     for dex_id in range(1, 1026):
         if not args.force and _already_exists(dex_id):
@@ -320,9 +363,26 @@ def main() -> None:
             continue
 
         raw_cards = fetch_cards_for_dex_id(dex_id)
+
+        if raw_cards is None:
+            consecutive_errors += 1
+            log.error(
+                "API error for dexId=%d (%d/%d consecutive failures).",
+                dex_id, consecutive_errors, MAX_CONSECUTIVE_ERRORS,
+            )
+            if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                log.error(
+                    "Aborting: %d consecutive API errors. "
+                    "Check connectivity and retry (already-written files will be skipped).",
+                    MAX_CONSECUTIVE_ERRORS,
+                )
+                sys.exit(2)
+            continue
+
+        consecutive_errors = 0
+
         if not raw_cards:
-            # Write empty sentinel so _already_exists returns True on re-run
-            # (dexIds with no TCG cards would otherwise be re-fetched every time).
+            # Write empty sentinel so _already_exists returns True on re-run.
             _write_json(_out_path("en", dex_id), [], args.dry_run)
             log.debug("No cards for dexId=%d — writing empty sentinel.", dex_id)
             continue
@@ -333,6 +393,21 @@ def main() -> None:
         for card in raw_cards:
             card_id = card.get("id")
             if not card_id:
+                continue
+
+            set_id = (card.get("set") or {}).get("id", "")
+            is_digital_primary = set_id in digital_set_ids
+            is_digital_regex   = bool(_POCKET_ID_PATTERN.match(set_id)) if set_id else False
+
+            if is_digital_primary != is_digital_regex and set_id not in doubtful_sets:
+                doubtful_sets.add(set_id)
+                log.warning(
+                    "Doubtful set %r: serie-based=%s but regex=%s — including card %r.",
+                    set_id, is_digital_primary, is_digital_regex, card_id,
+                )
+
+            if is_digital_primary:
+                digital_excluded += 1
                 continue
 
             en_entry = build_en_entry(card)
@@ -352,16 +427,21 @@ def main() -> None:
 
         if dex_id % 100 == 0:
             log.info(
-                "[%d/1025] EN files: %d | ES files: %d | cards so far: %d",
-                dex_id, total_en_files, total_es_files, total_cards,
+                "[%d/1025] EN files: %d | ES files: %d | cards so far: %d | digital excluded: %d",
+                dex_id, total_en_files, total_es_files, total_cards, digital_excluded,
             )
 
     log.info("=" * 60)
     log.info("DONE%s.", " (dry run — nothing written)" if args.dry_run else "")
-    log.info("  EN files written : %d", total_en_files)
-    log.info("  ES files written : %d", total_es_files)
-    log.info("  Total cards      : %d", total_cards)
-    log.info("  Skipped (cached) : %d", skipped)
+    log.info("  EN files written   : %d", total_en_files)
+    log.info("  ES files written   : %d", total_es_files)
+    log.info("  Total cards        : %d", total_cards)
+    log.info("  Digital excluded   : %d", digital_excluded)
+    log.info("  Skipped (cached)   : %d", skipped)
+    if doubtful_sets:
+        log.warning("  Doubtful sets (%d) : %s", len(doubtful_sets), sorted(doubtful_sets))
+    else:
+        log.info("  Doubtful sets      : none")
     log.info("=" * 60)
 
 
