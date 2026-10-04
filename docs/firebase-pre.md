@@ -72,6 +72,78 @@ Cuando se integre el catálogo TCGdex, añadir en `next.config.mjs` la directiva
 
 No aplicar hasta que la feature de catálogo de cartas esté implementada.
 
+## Poblar /pokemon (script Python)
+
+Esta operación se realiza **una sola vez por entorno**. Una vez ejecutada, la colección persiste mientras no se borre el proyecto Firebase. El script es idempotente — re-ejecutarlo sobreescribe los mismos documentos sin duplicar ni corromper datos.
+
+### Prerequisitos
+
+```bash
+pip install -r scripts/requirements.txt
+```
+
+### 1 — Descargar el service account
+
+1. Consola Firebase → seleccionar el proyecto → ⚙️ Configuración del proyecto → pestaña **Cuentas de servicio** → "Generar nueva clave privada"
+2. Guardar el fichero JSON **fuera del repositorio** (p.ej. `C:\credentials\<proyecto>-firebase-adminsdk.json`)
+3. El `.gitignore` cubre `*firebase-adminsdk*.json` y `scripts/*.json` como protección adicional
+
+### 2 — Verificar destino antes de escribir (dry-run)
+
+```powershell
+$env:FIREBASE_SERVICE_ACCOUNT_PATH = "C:\credentials\<proyecto>-firebase-adminsdk.json"
+python scripts/populate_pokemon.py --dry-run
+```
+
+> **Tiempo de ejecución**: el dry-run descarga todos los datos desde PokéAPI (~1216 requests, varios minutos) — la única diferencia con la ejecución completa es que no escribe en Firestore. El service account se usa para validar el project_id, pero no se escribe ningún documento.
+
+Confirmar en el log:
+- `Initialising Firebase for project: <project-id>` — debe ser el proyecto correcto
+- `Documents to write to /pokemon: NNN` — número esperado (~1216)
+- `DRY RUN – Firestore writes skipped.`
+
+> Si el `project_id` del JSON no coincide con `pokeretodexpre`, el script aborta con error antes de escribir nada.
+
+### 3 — Ejecutar la población
+
+```powershell
+python scripts/populate_pokemon.py
+```
+
+(`FIREBASE_SERVICE_ACCOUNT_PATH` debe estar fijada en la misma sesión de terminal.)
+
+Escrituras Spark: ~1216 documentos (< 7 % del límite diario de 20 000 escrituras).
+
+### 4 — Validar el resultado
+
+La colección `/pokemon` tiene `allow read: if true`, por lo que se puede consultar sin auth:
+
+```
+GET https://firestore.googleapis.com/v1/projects/<project-id>/databases/(default)/documents/pokemon?pageSize=300
+```
+
+Iterar `nextPageToken` hasta agotarlo y sumar documentos. Resultado esperado: **1216** (5 páginas de 300/300/300/300/16).
+
+Verificar un documento concreto y comprobar que contiene los 9 campos obligatorios:
+`name`, `pokedex_number`, `region`, `types`, `sprite_url`, `form_index`, `is_special_form`, `sort_order`, `form_type`.
+
+Verificar que `/users` devuelve `403 PERMISSION_DENIED` (colección protegida, solo accesible con auth):
+
+```
+GET https://firestore.googleapis.com/v1/projects/<project-id>/databases/(default)/documents/users/test-uid
+→ HTTP 403  status: PERMISSION_DENIED
+```
+
+### 5 — Revocar la clave tras la ejecución
+
+1. Firebase Console → Configuración del proyecto → Cuentas de servicio → "Administrar claves" → eliminar la clave usada
+2. Borrar el fichero JSON local
+3. La variable de entorno desaparece al cerrar la terminal
+
+Una vez revocada la clave en Firebase, el fichero local es inútil aunque se filtrara.
+
+---
+
 ## Diferencias PROD ↔ PRE
 
 | | PROD | PRE |
@@ -82,4 +154,4 @@ No aplicar hasta que la feature de catálogo de cartas esté implementada.
 | Repo git | `praisegaming/PokeRetoDex` (privado) | `BryGomezDev/PokeRetoDexPre` (público) |
 | Remote git | `prod` (push bloqueado) | `origin` |
 | Usuarios reales | Sí | No — solo para pruebas |
-| Datos `/pokemon` | 1216 docs (script Python) | Vacío hasta poblar manualmente |
+| Datos `/pokemon` | 1216 docs (script Python) | 1216 docs (script Python, ver sección abajo) |
