@@ -3,6 +3,7 @@ generate_catalog.py
 ====================
 ETL script: fetches TCG card data from TCGdex API and writes static JSON
 catalogs to public/catalog/v1/en/{dexId}.json and public/catalog/v1/es/{dexId}.json.
+Also writes public/catalog/v1/rarities.json and public/catalog/v1/_meta.json.
 
 Usage:
     python scripts/generate_catalog.py [--force] [--dry-run]
@@ -16,13 +17,14 @@ Requirements:
 """
 
 import argparse
+import datetime
 import json
 import logging
 import os
 import re
 import sys
 import time
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 
@@ -44,6 +46,7 @@ HEADERS = {
 SLEEP_BETWEEN_REQUESTS = 0.5  # seconds – ≤ 2 req/s
 MAX_RETRIES = 3
 RETRY_BACKOFF = [1, 2, 4]     # seconds for attempt 1, 2, 3
+MAX_CONSECUTIVE_ERRORS = 3
 
 # Output paths are relative to the project root (parent of scripts/).
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -51,7 +54,7 @@ _PROJECT_ROOT = os.path.dirname(_SCRIPT_DIR)
 CATALOG_BASE = os.path.join(_PROJECT_ROOT, "public", "catalog", "v1")
 
 # Series IDs from GET /v2/en/series that represent digital-only games.
-# Verified 2026-10-04: "tcgp" = "Pokémon TCG Pocket" (15 sets: A1, A1a, A2, …, B2a).
+# Verified 2026-10-04: "tcgp" = "Pokémon TCG Pocket" (15 sets: A1, A1a, A2, …, B2a, A4a).
 # Source: GET https://api.tcgdex.net/v2/en/series/tcgp → {"id":"tcgp","name":"Pokémon TCG Pocket"}
 DIGITAL_SERIES_IDS: frozenset[str] = frozenset({"tcgp"})
 
@@ -59,66 +62,6 @@ DIGITAL_SERIES_IDS: frozenset[str] = frozenset({"tcgp"})
 # or with "P-" (e.g. A1, A1a, B2b, P-A).  Used only to flag discrepancies with the
 # serie-based filter — never as the sole exclusion criterion.
 _POCKET_ID_PATTERN = re.compile(r"^[A-Z]\d|^P-")
-
-# ── Rarity → variant mapping ──────────────────────────────────────────────────
-# Copied verbatim from scripts/spike/rarities_and_variants.py (RARITY_MAP_HINTS),
-# keeping only the variant string (dropping the confidence hint).
-RARITY_MAP: dict[str, str] = {
-    "Common":                        "basica",
-    "Uncommon":                      "basica",
-    "None":                          "basica",
-    "Promo":                         "basica",
-    "Black White Rare":              "holo",
-    "Rare":                          "holo",
-    "Rare Holo":                     "holo",
-    "Rare Holo EX":                  "alternativa",
-    "Rare Holo GX":                  "alternativa",
-    "Rare Holo V":                   "alternativa",
-    "Rare Holo VMAX":                "alternativa",
-    "Rare Holo VSTAR":               "alternativa",
-    "Rare Ultra":                    "alternativa",
-    "Ultra Rare":                    "alternativa",
-    "Double Rare":                   "alternativa",
-    "Amazing Rare":                  "alternativa",
-    "Radiant Rare":                  "alternativa",
-    "Character Rare":                "alternativa",
-    "Character Super Rare":          "alternativa",
-    "Trainer Gallery Rare Holo":     "holo",
-    "Rare Shining":                  "holo",
-    "Rare Prime":                    "holo",
-    "Rare ACE":                      "alternativa",
-    "ACE SPEC Rare":                 "alternativa",
-    "Rare BREAK":                    "holo",
-    "Legend":                        "alternativa",
-    "Futuristic Rare":               "alternativa",
-    "Rare Rainbow":                  "fullart",
-    "Rare Secret":                   "fullart",
-    "Rare Full Art":                 "fullart",
-    "Hyper Rare":                    "fullart",
-    "Special Illustration Rare":     "fullart",
-    "Illustration Rare":             "fullart",
-    "Classic Collection":            "alternativa",
-    "Shiny Rare":                    "holo",
-    "Shiny Ultra Rare":              "fullart",
-    "Crown Rare":                    "fullart",
-    "Mega Hyper Rare":               "fullart",
-    "Secret Rare":                   "fullart",
-}
-
-
-def map_rarity(rarity: Optional[str]) -> str:
-    """Return the app variant string for a TCGdex rarity value.
-
-    Falls back to 'basica' for unknown values and logs a WARNING so we can
-    detect new rarities introduced by future TCGdex data.
-    """
-    if not rarity:
-        return "basica"
-    variant = RARITY_MAP.get(rarity)
-    if variant is None:
-        log.warning("Unknown rarity %r — defaulting to 'basica'. Add to RARITY_MAP if needed.", rarity)
-        return "basica"
-    return variant
 
 
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -151,7 +94,7 @@ def _post_with_retry(payload: dict) -> Optional[dict]:
     return None
 
 
-def _get_with_retry(url: str) -> Optional[list]:
+def _get_with_retry(url: str) -> Optional[Any]:
     """GET url with exponential backoff on 429/5xx. Returns parsed JSON or None."""
     for attempt, wait in enumerate(RETRY_BACKOFF, start=1):
         try:
@@ -183,7 +126,7 @@ def _get_with_retry(url: str) -> Optional[list]:
 
 def fetch_es_index() -> dict[str, dict]:
     """Fetch the full ES card index and return dict[card_id, {id, localId, name, image}].
-    Called once per execution before the main dexId loop (Gap C)."""
+    Called once per execution before the main dexId loop."""
     log.info("Fetching ES card index from %s/es/cards …", BASE_URL)
     data = _get_with_retry(f"{BASE_URL}/es/cards")
     if not data or not isinstance(data, list):
@@ -277,18 +220,16 @@ def _variants_dict(raw_variants: Optional[dict]) -> dict:
 
 
 def build_en_entry(card: dict) -> dict:
-    rarity = card.get("rarity")
     set_info = card.get("set") or {}
     return {
-        "id":            card["id"],
-        "localId":       card.get("localId", ""),
-        "name":          card.get("name", ""),
-        "setId":         set_info.get("id", ""),
-        "setName":       set_info.get("name", ""),
-        "rarity":        rarity,
-        "variantMapped": map_rarity(rarity),
-        "image":         card.get("image") or "",
-        "variants":      _variants_dict(card.get("variants")),
+        "id":       card["id"],
+        "localId":  card.get("localId", ""),
+        "name":     card.get("name", ""),
+        "setId":    set_info.get("id", ""),
+        "setName":  set_info.get("name", ""),
+        "rarity":   card.get("rarity"),   # literal from API; null if missing
+        "image":    card.get("image") or "",
+        "variants": _variants_dict(card.get("variants")),
     }
 
 
@@ -313,7 +254,7 @@ def _already_exists(dex_id: int) -> bool:
     return os.path.exists(_out_path("en", dex_id))
 
 
-def _write_json(path: str, data: list, dry_run: bool) -> None:
+def _write_json(path: str, data: Any, dry_run: bool) -> None:
     if dry_run:
         return
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -321,10 +262,67 @@ def _write_json(path: str, data: list, dry_run: bool) -> None:
         json.dump(data, fh, ensure_ascii=False, separators=(",", ":"))
 
 
+# ── Rarities catalog ──────────────────────────────────────────────────────────
+
+def _rarities_path() -> str:
+    return os.path.join(CATALOG_BASE, "rarities.json")
+
+
+def _meta_path() -> str:
+    return os.path.join(CATALOG_BASE, "_meta.json")
+
+
+def _load_existing_rarities() -> dict[Optional[str], dict]:
+    """Load existing rarities.json keyed by tcgdex value (None for JSON null).
+    Returns empty dict if the file does not exist or is malformed."""
+    path = _rarities_path()
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return {
+            entry.get("tcgdex"): entry
+            for entry in data
+            if isinstance(entry, dict) and "tcgdex" in entry
+        }
+    except (json.JSONDecodeError, ValueError):
+        log.warning("Could not parse existing rarities.json — starting fresh.")
+        return {}
+
+
+def _build_rarities_list(
+    rarity_counts: dict[Optional[str], int],
+    existing: dict[Optional[str], dict],
+) -> list[dict]:
+    """Merge new rarity counts with existing human-curated es/wikidex values.
+
+    Machine owns: tcgdex, cards.
+    Human owns:   es, wikidex.
+    Entries no longer present in the new run are dropped with a warning.
+    """
+    dropped = set(existing) - set(rarity_counts)
+    if dropped:
+        log.warning(
+            "rarities.json: dropping %d stale entr%s: %s",
+            len(dropped),
+            "y" if len(dropped) == 1 else "ies",
+            sorted(str(k) for k in dropped),
+        )
+    result = []
+    for rarity_val, count in rarity_counts.items():
+        old = existing.get(rarity_val, {})
+        result.append({
+            "tcgdex":  rarity_val,        # None → JSON null
+            "es":      old.get("es"),
+            "wikidex": bool(old.get("wikidex", False)),
+            "cards":   count,
+        })
+    result.sort(key=lambda x: x["cards"], reverse=True)
+    return result
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
-
-MAX_CONSECUTIVE_ERRORS = 3
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -350,11 +348,14 @@ def main() -> None:
 
     total_en_files = 0
     total_es_files = 0
-    total_cards = 0
+    total_cards_en = 0
+    total_cards_es = 0
     skipped = 0
     digital_excluded = 0
     doubtful_sets: set[str] = set()
     consecutive_errors = 0
+    rarity_counts: dict[Optional[str], int] = {}
+    null_rarity_cards = 0
 
     for dex_id in range(1, 1026):
         if not args.force and _already_exists(dex_id):
@@ -413,31 +414,66 @@ def main() -> None:
             en_entry = build_en_entry(card)
             en_entries.append(en_entry)
 
+            rarity_val = en_entry["rarity"]
+            if rarity_val is None:
+                null_rarity_cards += 1
+            rarity_counts[rarity_val] = rarity_counts.get(rarity_val, 0) + 1
+
             if card_id in es_map:
                 es_entries.append(build_es_entry(en_entry, es_map[card_id]))
 
         if en_entries:
             _write_json(_out_path("en", dex_id), en_entries, args.dry_run)
             total_en_files += 1
-            total_cards += len(en_entries)
+            total_cards_en += len(en_entries)
 
         if es_entries:
             _write_json(_out_path("es", dex_id), es_entries, args.dry_run)
             total_es_files += 1
+            total_cards_es += len(es_entries)
 
         if dex_id % 100 == 0:
             log.info(
-                "[%d/1025] EN files: %d | ES files: %d | cards so far: %d | digital excluded: %d",
-                dex_id, total_en_files, total_es_files, total_cards, digital_excluded,
+                "[%d/1025] EN files: %d | ES files: %d | cards: %d | digital excluded: %d",
+                dex_id, total_en_files, total_es_files, total_cards_en, digital_excluded,
             )
+
+    # ── rarities.json (merge: human-owned es/wikidex preserved) ───────────────
+    existing_rarities = _load_existing_rarities()
+    rarities_list = _build_rarities_list(rarity_counts, existing_rarities)
+    _write_json(_rarities_path(), rarities_list, args.dry_run)
+
+    # ── _meta.json ────────────────────────────────────────────────────────────
+    meta = {
+        "schema_version": 1,
+        "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "dex_range": {"min": 1, "max": 1025},
+        "files": {"en": total_en_files, "es": total_es_files},
+        "cards": {"en": total_cards_en, "es": total_cards_es},
+        "digital_exclusions": {
+            "series_ids_treated_as_digital": sorted(DIGITAL_SERIES_IDS),
+            "set_ids_prefetched": len(digital_set_ids),
+            "cards_excluded": digital_excluded,
+        },
+        "doubtful_sets": sorted(doubtful_sets),
+        "rarities": {
+            "distinct_count": len(rarity_counts),
+            "null_rarity_cards": null_rarity_cards,
+        },
+    }
+    _write_json(_meta_path(), meta, args.dry_run)
 
     log.info("=" * 60)
     log.info("DONE%s.", " (dry run — nothing written)" if args.dry_run else "")
     log.info("  EN files written   : %d", total_en_files)
     log.info("  ES files written   : %d", total_es_files)
-    log.info("  Total cards        : %d", total_cards)
+    log.info("  Cards EN           : %d", total_cards_en)
+    log.info("  Cards ES           : %d", total_cards_es)
     log.info("  Digital excluded   : %d", digital_excluded)
     log.info("  Skipped (cached)   : %d", skipped)
+    log.info("  Distinct rarities  : %d", len(rarity_counts))
+    if null_rarity_cards:
+        log.warning("  Null-rarity cards  : %d", null_rarity_cards)
     if doubtful_sets:
         log.warning("  Doubtful sets (%d) : %s", len(doubtful_sets), sorted(doubtful_sets))
     else:
