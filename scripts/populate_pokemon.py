@@ -10,6 +10,7 @@ Requirements:
     pip install -r scripts/requirements.txt
 """
 
+import argparse
 import os
 import sys
 import time
@@ -35,6 +36,10 @@ SLEEP_BETWEEN_REQUESTS = 0.1   # seconds – be polite to PokéAPI
 BATCH_SIZE = 500                # Firestore batch write limit
 MAX_RETRIES = 3
 RETRY_BACKOFF = [1, 2, 4]      # seconds for attempt 1, 2, 3
+
+# Safety guard – abort if the service account targets the wrong Firebase project.
+# Only this PRE project should ever receive data from this script.
+EXPECTED_PROJECT_ID = "pokeretodexpre"
 
 # National Pokédex ranges per region (base-form Pokémon only).
 # Hisui, Alola-forms, Galar-forms, Paldea-forms are detected by slug suffix.
@@ -205,6 +210,17 @@ def build_pokemon_doc(slug: str, api_data: dict, species_id: int) -> dict:
     }
 
 
+# ── Project-ID safety guard ───────────────────────────────────────────────────
+
+def _check_project_id(project_id: str) -> None:
+    """Raise ValueError if the service account targets the wrong Firebase project."""
+    if project_id != EXPECTED_PROJECT_ID:
+        raise ValueError(
+            f"Safety guard: service account project_id is '{project_id}', "
+            f"expected '{EXPECTED_PROJECT_ID}'. Aborting – no data written."
+        )
+
+
 # ── Firebase initialisation ───────────────────────────────────────────────────
 
 def init_firebase() -> firestore.Client:
@@ -229,6 +245,12 @@ def init_firebase() -> firestore.Client:
     project_id = sa_json.get("project_id")
     if not project_id:
         log.error("Could not read 'project_id' from service account JSON.")
+        sys.exit(1)
+
+    try:
+        _check_project_id(project_id)
+    except ValueError as e:
+        log.error("%s", e)
         sys.exit(1)
 
     log.info("Initialising Firebase for project: %s", project_id)
@@ -270,8 +292,18 @@ def should_include(slug: str, pokedex_number: int) -> bool:
 # ── Main pipeline ─────────────────────────────────────────────────────────────
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Seed /pokemon collection in Firestore from PokéAPI."
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch data from PokéAPI and print document count without writing to Firestore.",
+    )
+    args = parser.parse_args()
+
+    # init_firebase validates project_id in both modes (dry-run and full run).
     db = init_firebase()
-    collection = db.collection("pokemon")
 
     all_slugs = fetch_all_slugs()
 
@@ -328,10 +360,16 @@ def main() -> None:
         "Pass 1 complete. %d Pokémon fetched across %d species. %d failed.",
         total_fetched, len(species_groups), len(failed_slugs),
     )
+    log.info("Documents to write to /pokemon: %d", total_fetched)
+
+    if args.dry_run:
+        log.info("DRY RUN – Firestore writes skipped. Re-run without --dry-run to populate.")
+        return
 
     # ── Pass 2: assign form_index per species, then batch-write to Firestore ──
     log.info("Pass 2 – assigning form_index and writing to Firestore …")
 
+    collection = db.collection("pokemon")
     batch = db.batch()
     batch_count = 0
     written_count = 0
