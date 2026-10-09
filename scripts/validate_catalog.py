@@ -5,7 +5,7 @@ validate_catalog.py — Acceptance tests for the TCG card catalog ETL output.
 Acceptance criteria:
   A1  All 1025 dex files exist (or are accounted for by _meta.files_written)
   A2  Every dex file parses as valid JSON with top-level keys "en" and "es"
-  A3  Global EN/ES card counts match _meta.json baseline (17993 / 11987)
+  A3  Global EN/ES card counts match _meta.json baseline (17995 / 11989)
   A4  rarities.json has exactly 32 entries and their card-count sum equals EN total
   A5  No card carries a "variantMapped" field (removed in PASO 3)
   A6  Every card has exactly the five variant keys; at least one is true
@@ -112,9 +112,9 @@ def _load_catalog(catalog: Path) -> dict[int, dict]:
 
 # ── Individual checks ───────────────────────────────────────────────────────
 
-def check_a1(catalog: Path, meta: dict) -> Result:
-    """A1: File count matches _meta.files_written; all files parse cleanly."""
-    r = Result("A1", "dex file count == _meta.files_written")
+def check_a1(catalog: Path, meta: dict, catalog_data: dict[int, dict]) -> Result:
+    """A1: File count matches _meta.files_written; no sentinel files with empty 'en'."""
+    r = Result("A1", "dex file count == _meta.files_written; no empty-en sentinels")
     files = [
         f for f in catalog.iterdir()
         if f.suffix == ".json" and not f.name.startswith("_") and f.stem != "rarities"
@@ -122,12 +122,18 @@ def check_a1(catalog: Path, meta: dict) -> Result:
     ]
     actual = len(files)
     expected = meta.get("files_written", BASELINE_FILES)
-    if actual == expected:
-        return r.pass_(f"{actual} files present, matches _meta.files_written={expected}")
-    return r.fail(
-        f"{actual} files present, expected {expected} per _meta.files_written",
-        [f"Difference: {actual - expected:+d}"],
-    )
+    if actual != expected:
+        return r.fail(
+            f"{actual} files present, expected {expected} per _meta.files_written",
+            [f"Difference: {actual - expected:+d}"],
+        )
+    sentinel_ids = sorted(dex_id for dex_id, d in catalog_data.items() if not d.get("en"))
+    if sentinel_ids:
+        return r.fail(
+            f"{actual} files ({len(sentinel_ids)} empty sentinels found)",
+            [f"Empty 'en' in dexIds: {sentinel_ids[:5]}{'...' if len(sentinel_ids) > 5 else ''}"],
+        )
+    return r.pass_(f"{actual} files present, matches _meta.files_written={expected}; 0 sentinels")
 
 
 def check_a2(catalog: Path) -> Result:
@@ -362,7 +368,7 @@ def main() -> int:
     print(f"  Loaded {len(catalog_data)} dex files into memory.\n")
 
     results: list[Result] = [
-        check_a1(catalog, meta),
+        check_a1(catalog, meta, catalog_data),
         check_a2(catalog),
         check_a3(catalog_data, meta),
         check_a4(catalog, catalog_data),
