@@ -34,13 +34,13 @@ python scripts/validate_catalog.py --check-images  # A11: spot check HEAD a asse
 | A1 | 1025 archivos dex existen y parsean JSON válido | **PASS** | `1025 files present, matches _meta.files_written=1025; 0 sentinels` |
 | A2 | Cobertura ES: IDs únicos en catálogo vs total de entradas | **PASS** | 11.873 IDs únicos; 11.989 entradas totales (116 duplicados por cartas multi-dexId) |
 | A3 | Idempotencia (--force): archivos funcionalmente idénticos | **PASS†** | 1026/1027 SHA-256 idénticos (†`_meta.json` difiere en `generated_at` por diseño); `api_requests=0`, `cache_hits=1027` |
-| A4 | Reanudación (resume sin --force): fix verificado | **PASS** | 40 archivos borrados y regenerados desde caché; 0 SHA mismatches en dexId files; `rarities.json` sum=17.995; `api_requests=0` |
-| A5 | Tamaño real del catálogo | **PASS** | 1027 archivos; 7.670.108 bytes (~7,31 MiB lógicos); comprimido en git: 2,90 MiB; catálogo spike era ~48 MB → catálogo filtrado 6,6× más ligero |
-| A6 | Peso en git (crecimiento de la rama) | **PASS** | `size-pack: 2,90 MiB`; 3 packs, 1511 objetos; crecimiento desde rama base: +2,90 MiB (incluye ambas versiones de los 1.025 archivos tras reescritura de Fase 2) |
+| A4 | Reanudación (resume sin --force): interrupción real verificada | **PASS** | Prueba caché-borrada (51 dexIds, timeout=8s): 7 antes del corte → resume con 44 peticiones API, 0 SHA mismatches; `rarities.json` sum=17.995 |
+| A5 | Tamaño real del catálogo | **PASS** | 1027 archivos; 7.670.108 bytes lógicos (~7,31 MiB); gzip-9: 0,798 MiB (ratio 9,16×); tar.gz: 0,487 MiB; media gz/archivo: 816 bytes; catálogo spike EN+ES+JP ~48 MB → 6,6× más ligero |
+| A6 | Peso en git (crecimiento de la rama) | **PASS** | 1.058 blobs nuevos vs main; 7,556 MiB sin comprimir; pack repo completo: 2,90 MiB. "2 versiones" = archivos originales + reescritos en Fase 2 para añadir campo `rarity` (delta-comprimidos) |
 | A7 | Límite de velocidad ≤ 2 req/s | **PASS** | `SLEEP_BETWEEN_REQUESTS = 0.5s` → techo 2 req/s; pico observado: 1,10 req/s |
 | A8 | Spot check 20 cartas: ES ⊆ EN por dexId | **PASS** | `20/20 EN; 6/20 NO_ES`: `base1-4, base1-58, neo1-16, ex1-101, bw11-101, dp1-1` (5 sets únicos sin traducción ES) |
-| A9 | Sin cartas digitales en catálogo (TCG Pocket excluidas) | **PASS** | `0 Pocket cards found`; 2.283 EN excluidas; 1.246 ES excluidas (set P-A incluido) |
-| A10 | `rarities.json` completo y cuadrado con WikiDex | **PASS** | 32 entradas; `sum(cards)=17.995 == EN total`; 23 `wikidex:true`, 9 `wikidex:false` (pendientes de decisión del maintainer) |
+| A9 | Sin cartas digitales en catálogo (TCG Pocket excluidas) | **PASS** | `0 Pocket cards found`; 2.283 EN excluidas; 1.246 ES excluidas. P-A (92 cartas) excluido por `card_id.startswith("P-A-")` |
+| A10 | `rarities.json` completo y cuadrado con WikiDex | **PASS** | 32 entradas; `sum(cards)=17.995 == EN total`; 25 `wikidex:true`, 7 `wikidex:false`. Holo Rare + Rare Holo → `es="Rara Holo"` (WikiDex: todas las eras) |
 | A11 | Spot check URLs de imagen (HEAD → 200) | **PASS** | 20/20 HTTP 200 en `assets.tcgdex.net`; eras cubiertas: Base, Neo, EX, POP, Platinum, SM, SWSH, ME, SV; patrón `{image}/high.jpg` funciona en todos los sets |
 
 ## Límites de velocidad
