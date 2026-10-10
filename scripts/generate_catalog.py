@@ -537,6 +537,35 @@ def main() -> None:
                 dex_id, total_files, total_cards_en, digital_excluded, elapsed,
             )
 
+    # ── Rescan all catalog files for full-disk stats ───────────────────────────
+    # Fixes partial-run corruption: rebuild rarity_counts and counters from ALL
+    # files on disk, not just those processed in this run.
+    rarity_counts = {}
+    null_rarity_cards = 0
+    total_files = 0
+    total_cards_en = 0
+    total_cards_es = 0
+    for scan_id in range(1, 1026):
+        scan_path = _out_path(scan_id)
+        if not os.path.exists(scan_path):
+            continue
+        try:
+            with open(scan_path, encoding="utf-8") as fh:
+                scan_data = json.load(fh)
+        except (json.JSONDecodeError, OSError):
+            continue
+        scan_en = scan_data.get("en") or []
+        if not scan_en:
+            continue  # sentinel (all-digital or no-cards dexId)
+        total_files += 1
+        total_cards_en += len(scan_en)
+        total_cards_es += len(scan_data.get("es") or [])
+        for scan_card in scan_en:
+            scan_rarity = scan_card.get("rarity")
+            if scan_rarity is None:
+                null_rarity_cards += 1
+            rarity_counts[scan_rarity] = rarity_counts.get(scan_rarity, 0) + 1
+
     # ── rarities.json ─────────────────────────────────────────────────────────
     existing_rarities = _load_existing_rarities()
     rarities_list = _build_rarities_list(rarity_counts, existing_rarities)
