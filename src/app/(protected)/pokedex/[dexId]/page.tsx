@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { notFound } from "next/navigation";
 import { usePokedexContext } from "@/context/PokedexDataContext";
 
 // Next.js App Router page: params.dexId is the segment from the URL
@@ -11,11 +12,14 @@ export default function PokemonCardsPage({ params }: { params: { dexId: string }
   const { pokemon, loading } = usePokedexContext();
 
   const dexId = parseInt(params.dexId, 10);
+  const validDexId = !isNaN(dexId) && dexId >= 1 && dexId <= 1025;
 
   const poke = useMemo(
-    () => pokemon.find((p) => p.pokedex_number === dexId && p.form_type === null) ?? null,
-    [pokemon, dexId]
+    () => (validDexId ? pokemon.find((p) => p.pokedex_number === dexId && p.form_type === null) ?? null : null),
+    [pokemon, dexId, validDexId]
   );
+
+  if (!loading && !validDexId) notFound();
 
   if (loading) {
     return (

@@ -827,3 +827,4 @@ Actualmente `is_bulk` y `bulk_quantity` son campos raíz del documento de colecc
 | Ruta de la nueva pantalla | **`/pokedex/[dexId]`** — dexId numérico, no slug [Dato] |
 | D3 — Shiny/Promo | Mantener a nivel de Pokémon; granularidad por carta en fase futura [Recomendación aceptada] |
 | D7 — Grid con formas | **Opción A** — grid muestra exactamente 1025 fichas (`form_type === null`); formas accesibles desde `/pokedex/{dexId}` [Dato: decisión confirmada] |
+| owned/hasCatalogCards contract | owned mostrado = hasCatalogCards \|\| owned_legacy. No se puede desmarcar owned desde el modal si hasCatalogCards=true; requiere eliminar las cartas primero desde /pokedex/{dexId}. [Dato: implementado en PokemonModal.tsx handleToggleOwned] |

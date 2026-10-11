@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Sparkles, Ticket, Layers, Heart } from "lucide-react";
@@ -42,6 +42,7 @@ export function PokemonCard({ pokemon, onEditCollection, onToggleFavorite }: Pok
   const [menuOpen, setMenuOpen] = useState(false);
   const [imgError, setImgError] = useState(false);
   const router = useRouter();
+  const cardButtonRef = useRef<HTMLButtonElement>(null);
   const { t } = useLanguage();
 
   const usesGradientBorder =
@@ -55,12 +56,20 @@ export function PokemonCard({ pokemon, onEditCollection, onToggleFavorite }: Pok
       tabIndex={0}
       onBlur={(e) => {
         // Close menu only when focus leaves the entire component
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
           setMenuOpen(false);
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && menuOpen) {
+          e.preventDefault();
+          setMenuOpen(false);
+          cardButtonRef.current?.focus();
         }
       }}
     >
       <button
+        ref={cardButtonRef}
         onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
         title={`${pokemon.name} (#${pokemon.pokedex_number})`}
         className={cn(
@@ -90,17 +99,17 @@ export function PokemonCard({ pokemon, onEditCollection, onToggleFavorite }: Pok
               className="object-contain drop-shadow-sm"
               unoptimized
               onError={() => setImgError(true)}
-              style={!pokemon.owned ? { filter: "brightness(0) opacity(0.35)" } : undefined}
+              style={!pokemon.owned ? { filter: "brightness(0) invert(1) opacity(0.35)" } : undefined}
             />
           ) : (
             <div
-              className="w-full h-full rounded-full bg-gray-800"
+              className="w-full h-full rounded-full bg-gray-600"
               style={!pokemon.owned ? { opacity: 0.35 } : undefined}
             />
           )}
 
           {/* Card count badge — bottom-left of sprite */}
-          {pokemon.hasCatalogCards && cardCount > 0 && (
+          {cardCount > 0 && (
             <span className="bg-red-600 text-white text-[7px] font-bold rounded-full w-4 h-4 flex items-center justify-center absolute bottom-0 left-0">
               {cardCount}
             </span>

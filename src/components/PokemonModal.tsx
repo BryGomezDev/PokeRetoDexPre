@@ -47,6 +47,7 @@ export function PokemonModal({ pokemon, onClose, onSave, onToggleShiny, onToggle
   const [variant, setVariant] = useState<Variant | null>(pokemon.variant);
   const [language, setLanguage] = useState<CardLanguage | null>(pokemon.language);
   const [saving, setSaving] = useState(false);
+  const [catalogBlockMsg, setCatalogBlockMsg] = useState(false);
 
   // Bulk quantity — local state for immediate stepper feedback, debounce writes to Firestore
   const [localBulkQty, setLocalBulkQty] = useState(pokemon.bulk_quantity);
@@ -84,7 +85,10 @@ export function PokemonModal({ pokemon, onClose, onSave, onToggleShiny, onToggle
   // Close on Escape key
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
@@ -99,6 +103,12 @@ export function PokemonModal({ pokemon, onClose, onSave, onToggleShiny, onToggle
 
   function handleToggleOwned() {
     const next = !owned;
+    if (!next && pokemon.hasCatalogCards) {
+      setCatalogBlockMsg(true);
+      setTimeout(() => setCatalogBlockMsg(false), 3000);
+      return;
+    }
+    setCatalogBlockMsg(false);
     setOwned(next);
     if (!next) {
       setVariant(null);
@@ -246,6 +256,10 @@ export function PokemonModal({ pokemon, onClose, onSave, onToggleShiny, onToggle
               </span>
             </button>
           </div>
+
+          {catalogBlockMsg && (
+            <p className="text-xs text-amber-400 -mt-2">{t("modal.blockUnownedHasCards")}</p>
+          )}
 
           {/* Shiny / Promo — interactive toggles, save immediately to Firestore */}
           {owned && (
