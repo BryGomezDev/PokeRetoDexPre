@@ -787,7 +787,7 @@ Esto da lugar a dos filtros de distinta naturaleza:
 
 ---
 
-**D7 — ¿Cómo gestiona el grid los ~1215 Pokémon actuales (1025 base + ~190 formas)?** ⚠️ BLOQUEANTE — decidir antes de la Fase A
+**D7 — ¿Cómo gestiona el grid los ~1215 Pokémon actuales (1025 base + ~190 formas)?** ✅ RESUELTA
 
 El grid actual muestra las formas especiales (Mega, Gigantamax, Regionales) como fichas independientes junto a las especies base [Dato — verificado en `pokedex/page.tsx:148–170`]. El catálogo TCGdex está indexado por `dexId` (número nacional), no por slug. Existen tres estrategias posibles:
 
@@ -826,3 +826,4 @@ Actualmente `is_bulk` y `bulk_quantity` son campos raíz del documento de colecc
 | Esquema de datos | **Opción A+** — extensión del documento existente con `cards` + `favorite` [Dato] |
 | Ruta de la nueva pantalla | **`/pokedex/[dexId]`** — dexId numérico, no slug [Dato] |
 | D3 — Shiny/Promo | Mantener a nivel de Pokémon; granularidad por carta en fase futura [Recomendación aceptada] |
+| D7 — Grid con formas | **Opción A** — grid muestra exactamente 1025 fichas (`form_type === null`); formas accesibles desde `/pokedex/{dexId}` [Dato: decisión confirmada] |
