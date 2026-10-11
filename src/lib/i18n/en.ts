@@ -119,6 +119,10 @@ export const en = {
     emptyHint: "Change the filters or search term.",
     clearFiltersLink: "Clear filters",
     specialBadge: "Sp.",
+    contextMenuViewCards: "View cards",
+    contextMenuEditCollection: "Edit collection",
+    contextMenuFavorite: "Add to favorites",
+    contextMenuUnfavorite: "Remove from favorites",
     types: {
       normal: "Normal", fire: "Fire", water: "Water", grass: "Grass",
       electric: "Electric", ice: "Ice", fighting: "Fighting", poison: "Poison",
