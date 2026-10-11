@@ -16,6 +16,7 @@ import { db, auth } from "@/lib/firebase";
 import { useAuth } from "./AuthContext";
 import { useLanguage } from "./LanguageContext";
 import type { FormType, PokemonDoc, PokemonWithStatus, UserProfile, Variant, CardLanguage } from "@/hooks/usePokedexData";
+import { toDisplayState } from "@/hooks/usePokedexData";
 import { POKEMON_DATA_VERSION } from "@/lib/constants";
 
 // Key changes with POKEMON_DATA_VERSION, automatically invalidating stale caches
@@ -43,6 +44,7 @@ interface PokedexDataContextValue {
     isBulk: boolean,
     quantity: number
   ) => Promise<void>;
+  updateFavorite: (slug: string, value: boolean) => Promise<void>;
 }
 
 const PokedexDataContext = createContext<PokedexDataContextValue>({
@@ -53,6 +55,7 @@ const PokedexDataContext = createContext<PokedexDataContextValue>({
   updatePokemonStatus: async () => {},
   updateSpecialFlag: async () => {},
   updateBulkStatus: async () => {},
+  updateFavorite: async () => {},
 });
 
 export function PokedexDataProvider({ children }: { children: React.ReactNode }) {
@@ -165,21 +168,9 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
         }
 
         // --- 4. Build user collection map from always-fresh Firestore read ---
-        const collectionMap = new Map<
-          string,
-          { owned: boolean; variant: Variant | null; language: CardLanguage | null; is_shiny: boolean; is_promo: boolean; is_bulk: boolean; bulk_quantity: number }
-        >();
+        const collectionMap = new Map<string, ReturnType<typeof toDisplayState>>();
         collectionSnap.forEach((d) => {
-          const data = d.data();
-          collectionMap.set(d.id, {
-            owned: data.owned ?? false,
-            variant: (data.variant as Variant) ?? null,
-            language: (data.language as CardLanguage) ?? null,
-            is_shiny: data.is_shiny ?? false,
-            is_promo: data.is_promo ?? false,
-            is_bulk: data.is_bulk ?? false,
-            bulk_quantity: data.bulk_quantity ?? 0,
-          });
+          collectionMap.set(d.id, toDisplayState(d.data() as Record<string, unknown>));
         });
 
         // --- 5. Merge cached/fetched raw pokemon with fresh user collection ---
@@ -194,6 +185,9 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
             is_promo: entry?.is_promo ?? false,
             is_bulk: entry?.is_bulk ?? false,
             bulk_quantity: entry?.bulk_quantity ?? 0,
+            favorite: entry?.favorite ?? false,
+            cards: entry?.cards ?? {},
+            hasCatalogCards: entry?.hasCatalogCards ?? false,
           };
         });
 
@@ -286,8 +280,23 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
     [uid]
   );
 
+  const updateFavorite = useCallback(
+    async (slug: string, value: boolean) => {
+      if (!uid) return;
+      setPokemon((prev) =>
+        prev.map((p) => (p.slug === slug ? { ...p, favorite: value } : p))
+      );
+      await setDoc(
+        doc(db, "users", uid, "collection", slug),
+        { favorite: value, updated_at: serverTimestamp() },
+        { merge: true }
+      );
+    },
+    [uid]
+  );
+
   return (
-    <PokedexDataContext.Provider value={{ pokemon, userProfile, loading, error, updatePokemonStatus, updateSpecialFlag, updateBulkStatus }}>
+    <PokedexDataContext.Provider value={{ pokemon, userProfile, loading, error, updatePokemonStatus, updateSpecialFlag, updateBulkStatus, updateFavorite }}>
       {children}
     </PokedexDataContext.Provider>
   );

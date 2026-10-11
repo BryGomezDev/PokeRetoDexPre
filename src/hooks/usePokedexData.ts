@@ -31,6 +31,11 @@ export interface PokemonDoc {
 export type Variant = "basica" | "holo" | "alternativa" | "fullart";
 export type CardLanguage = "es" | "en" | "zh" | "ko" | "ja" | "otros";
 
+export interface CardEntry {
+  copies: number;
+  language: CardLanguage | null;
+}
+
 export interface PokemonWithStatus extends PokemonDoc {
   owned: boolean;
   variant: Variant | null;
@@ -39,6 +44,30 @@ export interface PokemonWithStatus extends PokemonDoc {
   is_promo: boolean;
   is_bulk: boolean;
   bulk_quantity: number;
+  favorite: boolean;
+  cards: Record<string, CardEntry>;
+  hasCatalogCards: boolean;
+}
+
+export function toDisplayState(data: Record<string, unknown>): {
+  owned: boolean; variant: Variant | null; language: CardLanguage | null;
+  is_shiny: boolean; is_promo: boolean; is_bulk: boolean; bulk_quantity: number;
+  favorite: boolean; cards: Record<string, CardEntry>; hasCatalogCards: boolean;
+} {
+  const cards = (data.cards ?? {}) as Record<string, CardEntry>;
+  const hasCatalogCards = Object.keys(cards).length > 0;
+  return {
+    owned: hasCatalogCards || ((data.owned as boolean) ?? false),
+    variant: (data.variant as Variant) ?? null,
+    language: (data.language as CardLanguage) ?? null,
+    is_shiny: (data.is_shiny as boolean) ?? false,
+    is_promo: (data.is_promo as boolean) ?? false,
+    is_bulk: (data.is_bulk as boolean) ?? false,
+    bulk_quantity: (data.bulk_quantity as number) ?? 0,
+    favorite: (data.favorite as boolean) ?? false,
+    cards,
+    hasCatalogCards,
+  };
 }
 
 export interface UserProfile {
@@ -93,21 +122,9 @@ export function usePokedexData(uid: string | null): UsePokedexDataResult {
           });
         }
 
-        const collectionMap = new Map<
-          string,
-          { owned: boolean; variant: Variant | null; language: CardLanguage | null; is_shiny: boolean; is_promo: boolean; is_bulk: boolean; bulk_quantity: number }
-        >();
+        const collectionMap = new Map<string, ReturnType<typeof toDisplayState>>();
         collectionSnap.forEach((d) => {
-          const data = d.data();
-          collectionMap.set(d.id, {
-            owned: data.owned ?? false,
-            variant: (data.variant as Variant) ?? null,
-            language: (data.language as CardLanguage) ?? null,
-            is_shiny: data.is_shiny ?? false,
-            is_promo: data.is_promo ?? false,
-            is_bulk: data.is_bulk ?? false,
-            bulk_quantity: data.bulk_quantity ?? 0,
-          });
+          collectionMap.set(d.id, toDisplayState(d.data() as Record<string, unknown>));
         });
 
         const combined: PokemonWithStatus[] = pokemonSnap.docs.map((d) => {
@@ -123,6 +140,7 @@ export function usePokedexData(uid: string | null): UsePokedexDataResult {
             types: data.types ?? [],
             sprite_url: data.sprite_url ?? "",
             is_special_form: data.is_special_form ?? false,
+            form_type: (data.form_type as FormType) ?? null,
             owned: entry?.owned ?? false,
             variant: entry?.variant ?? null,
             language: entry?.language ?? null,
@@ -130,7 +148,9 @@ export function usePokedexData(uid: string | null): UsePokedexDataResult {
             is_promo: entry?.is_promo ?? false,
             is_bulk: entry?.is_bulk ?? false,
             bulk_quantity: entry?.bulk_quantity ?? 0,
-            form_type: (data.form_type as FormType) ?? null,
+            favorite: entry?.favorite ?? false,
+            cards: entry?.cards ?? {},
+            hasCatalogCards: entry?.hasCatalogCards ?? false,
           };
         });
 
