@@ -299,9 +299,9 @@ Los artworks son aproximadamente 10 veces más pesados que los sprites pequeños
 
 - Peso estimado de 1025 sprites: ~5 MB [Estimación].
 - El catálogo estático ya ocupa ~7.3 MiB en git [Dato: métricas de `catalogo-etl.md`].
-- Total del repositorio con sprites añadidos: ~12.3 MB [Estimación] — manejable para git y muy por debajo del límite de despliegue de Vercel (13 GB) [Dato: límite Vercel Hobby].
+- Total del repositorio con sprites añadidos: ~12.3 MB [Estimación] — manejable para git y muy por debajo del límite de despliegue de Vercel [Estimación — verificar en vercel.com/docs/limits antes de desplegar].
 - Official artworks (~50 MB estimados) [Estimación] son excesivos para git; se descartan para el panel.
-- Vercel Hobby incluye 100 GB de Fast Data Transfer al mes [Dato]. Una carga completa del grid (~5 KB × 1025 sprites) ≈ 5 MB; con 2 usuarios el impacto es negligible [Estimación].
+- Vercel Hobby incluye un límite de Fast Data Transfer mensual [Estimación — verificar cifra exacta en vercel.com/docs/limits]. Una carga completa del grid (~5 KB × 1025 sprites) ≈ 5 MB; con 2 usuarios el impacto es negligible [Estimación].
 - Vercel sirve `public/` desde CDN edge con caché automática [Dato].
 - **Veredicto: técnicamente sólido; elimina dependencias externas.** Los artworks en Firestore (`sprite_url`) se mantienen para el modal de detalle de cada Pokémon.
 
@@ -409,7 +409,7 @@ Sin este cambio, las imágenes de cartas de TCGdex son bloqueadas por la políti
 | `favorite === true` | Icono de favorito visible en la tarjeta [Estimación] |
 | Cargando | Skeleton existente; añadir círculo gris en esquina para el badge [Estimación] |
 
-El grid siempre muestra los 1025 Pokémon; no hay estado vacío en el panel principal.
+El grid muestra actualmente ~1215 entradas (1025 especies base + ~190 formas especiales — Mega, Gigantamax, Regionales), porque `filteredPokemon` itera sobre todos los Pokémon sin excluir `is_special_form` cuando `categoryFilter === ""` [Dato — verificado en `pokedex/page.tsx:148–170`]. Ver decisión D7 en la Sección 9.
 
 #### Pantalla de cartas de un Pokémon — nueva ruta `/pokedex/{dexId}`
 
@@ -454,13 +454,13 @@ Cierre: tap fuera del popover, tecla Escape, scroll del grid.
 | Estado | Ninguno (cruza catálogo + colección del usuario) | Todas / Las tengo / Me faltan | 3 chips, selección única | 100% cliente [Dato] |
 | Colección/Set | `setName` [Dato] | Discretos; dependen del Pokémon (hasta ~40 en Pikachu) | Select desplegable | 100% cliente |
 | Rareza | `rarity` [Dato] | Hasta 32 globales; 3–8 por Pokémon [Estimación] | Select con 5 grupos (ver 6.3) | 100% cliente |
-| Idioma | No está en el catálogo; es atributo del usuario [Dato] | EN / ES / ZH / KO / JA / Otros | Chips, selección múltiple | 100% cliente |
+| Idioma | Para ES: el bloque `es` del JSON de catálogo indica si la carta tiene edición en español — es un dato derivado del catálogo [Dato: estructura de `1.json` confirmada]. Para EN/ZH/KO/JA/Otros: no está en el catálogo; es atributo que el usuario asigna al marcar la carta [Dato]. Ver D6 en Sección 9 | EN / ES / ZH / KO / JA / Otros | Chips, selección múltiple | 100% cliente |
 | Serie/Era | `setId`, prefijo hasta el primer dígito [Dato] | Véase tabla de prefijos abajo | Chips scroll o select | 100% cliente |
 | Variante de carta | `variants` — objeto booleano: `normal` / `holo` / `reverse` / `firstEdition` / `wPromo` [Dato] | 5 claves; multi-selección | Chips; solo las variantes presentes en ese Pokémon | 100% cliente |
 
 Todos los filtros se aplican íntegramente en el cliente. No se requieren queries adicionales a Firestore ni cambios de índices.
 
-**Nota sobre idioma de cartas:** el catálogo TCGdex no incluye un campo `languages` por carta. No es posible determinar desde el catálogo si una carta existe en español [Suposición — verificar en la documentación de la API de TCGdex antes de implementar]. El filtro de idioma opera únicamente sobre las cartas que el usuario ha marcado, no sobre el catálogo completo.
+**Nota sobre idioma de cartas:** cada JSON del catálogo tiene dos arrays de primer nivel: `en` y `es`. Una carta en el bloque `es` significa que fue editada en español [Dato — verificado en `public/catalog/v1/1.json`]. No hay bloques `zh`, `ko`, `ja` en el catálogo local; para otros idiomas el único dato disponible es el atributo `language` que el usuario asigna manualmente al marcar su carta. Ver D6 en Sección 9 para la decisión sobre qué filtro(s) implementar.
 
 **Tabla de prefijos de serie (`setId` → nombre):**
 
@@ -485,15 +485,7 @@ Todos los filtros se aplican íntegramente en el cliente. No se requieren querie
 
 ### 6.3 Etiquetado y agrupación de rarezas
 
-Las 32 rarezas del catálogo se agrupan en 5 grupos para el filtro [Estimación de diseño]:
-
-| Grupo | Rarezas incluidas |
-|---|---|
-| Comunes | Common, Uncommon, None |
-| Raras | Rare, Holo Rare, Rare Holo, Rare PRIME, Pikachu Rare, Black White Rare, Futuristic Rare, RGB Rare, Amazing Rare |
-| Ultra raras | Ultra Rare, Double rare, Holo Rare V, Holo Rare VMAX, Holo Rare VSTAR, Rare Holo LV.X, LEGEND, Classic Collection, Mega Attack Rare, Mega Hyper Rare |
-| Ilustraciones especiales | Illustration rare, Special illustration rare, Hyper rare, Radiant Rare |
-| Shiny / Promo | Shiny rare, Shiny Ultra Rare, Shiny rare V, Shiny rare VMAX, Promo |
+La agrupación de rarezas para el filtro está pendiente de confirmación con Brayan (ver D5 en Sección 9). Las 32 rarezas brutas del catálogo y su correspondencia con WikiDex están documentadas en `public/catalog/v1/rarities.json` [Dato].
 
 **Rarezas sin traducción al español (7):** None, Shiny rare, Classic Collection, Shiny Ultra Rare, Shiny rare V, Shiny rare VMAX, RGB Rare [Dato]. Para estas rarezas se muestra el nombre inglés de TCGdex con un indicador visual (asterisco o etiqueta «EN») [Estimación]. No se inventan traducciones: «Shiny rare» tiene significado técnico específico en el TCG.
 
@@ -592,29 +584,42 @@ No es necesario escribir el campo `owned` en Firestore para los documentos nuevo
 | D | 1 [Estimación] | Consistencia con datos existentes y bump de versión |
 | **Total** | **9** [Estimación] | **MVP del selector de cartas** |
 
-### 8.2 Fase A — Panel con siluetas y favoritos
+### 8.2 Fase A — Panel con siluetas, favoritos y ruta shell
 
-**Entregables:** ruta `/pokemon/[slug]`; grid de siluetas del catálogo; toggle de favorito; `toDisplayState` integrada en el contexto; icono de favorito en `PokemonCard`.
+**Entregables:**
+- Script `scripts/download_sprites.py` (idempotente): descarga los 1025 sprites 96×96 en `public/sprites/{dexId}.png`
+- Panel principal actualizado: sprites pequeños, CSS silueta para Pokémon sin cartas marcadas, badge numérico de cartas, icono de favorito en tarjeta
+- Menú contextual (Popover) en tarjeta: «Ver cartas» / toggle «Favorito» / «Ver mis cartas (X)»
+- `toDisplayState` integrada en el contexto; campo `favorite` en `PokemonWithStatus`; `updateFavorite` en `PokedexDataContext`
+- Ruta shell `/pokedex/[dexId]` — cabecera + skeleton, sin lógica de catálogo todavía
+- CSP actualizada: `https://assets.tcgdex.net` añadido a `img-src` y `remotePatterns`
+- Reglas Firestore con `validCollectionDoc()` preparadas en `firestore.rules` (sin desplegar)
 
-**Archivos de `src/` afectados:**
+**Archivos afectados:**
 
 | Archivo | Tipo de cambio |
 |---|---|
-| `src/app/(protected)/pokemon/[slug]/page.tsx` | Nuevo |
+| `scripts/download_sprites.py` | Nuevo (externo a `src/`) |
+| `src/app/(protected)/pokedex/[dexId]/page.tsx` | Nuevo — ruta shell |
 | `src/hooks/usePokedexData.ts` | Nuevos tipos + `toDisplayState` + `favorite` en `PokemonWithStatus` |
 | `src/context/PokedexDataContext.tsx` | Usar `toDisplayState`; añadir `updateFavorite` |
-| `src/components/PokemonCard.tsx` | Icono de favorito |
+| `src/components/PokemonCard.tsx` | Sprites pequeños + CSS silueta + menú contextual + icono favorito |
 | `src/lib/i18n/es.ts` y `en.ts` | Nuevas claves de traducción |
+| `next.config.mjs` | Añadir `https://assets.tcgdex.net` a `img-src` y `remotePatterns` |
+| `firestore.rules` | Añadir `validCollectionDoc()` (preparación, sin desplegar) |
 
 **Criterios de listo:**
-- Navegar a `/pokedex/bulbasaur` muestra las siluetas de sus cartas del catálogo
-- Marcar como favorito persiste en Firestore y se refleja en el icono de la tarjeta
+- Script descarga 1025 sprites y omite los ya existentes en disco
+- `PokemonCard` muestra silueta gris (`filter: brightness(0) opacity(0.35)`) para Pokémon sin cartas
+- Tap en tarjeta abre el menú contextual (Popover); «Ver cartas» navega a `/pokedex/{dexId}`
+- Favorito persiste en Firestore y se refleja en el icono de la tarjeta
 - `toDisplayState` devuelve `owned: true` para documentos que solo tienen `variant`
-- Sin regresión en el grid principal, el modal existente ni el Dashboard
+- Sin regresión en el grid, el modal existente ni el Dashboard
+- `npm run build` pasa sin errores con la nueva CSP
 
 **Dependencias:** ninguna.
 
-**Nota técnica:** la ruta hereda el guard de sesión del layout `(protected)` sin modificaciones. Confirmar que el grupo `(protected)` no tiene restricciones de nombrado que choquen con segmentos dinámicos `[slug]` antes de implementar [Estimación].
+**Nota técnica:** la ruta `/pokedex/[dexId]` coexiste con la ruta `/pokedex` (listado) sin conflicto en Next.js App Router. El guard de sesión del layout `(protected)` se hereda sin modificaciones. Confirmar que el grupo de rutas `(protected)` no tiene restricciones de nombrado que choquen con segmentos dinámicos `[dexId]` antes de implementar [Estimación].
 
 ### 8.3 Fase B — Pantalla de cartas y filtros
 
@@ -624,7 +629,7 @@ No es necesario escribir el campo `owned` en Firestore para los documentos nuevo
 
 | Archivo | Tipo de cambio |
 |---|---|
-| `src/app/(protected)/pokemon/[slug]/page.tsx` | Ampliar |
+| `src/app/(protected)/pokedex/[dexId]/page.tsx` | Ampliar |
 | `src/components/CardThumbnail.tsx` | Nuevo componente |
 | `src/lib/i18n/es.ts` y `en.ts` | Nuevas claves |
 
@@ -639,15 +644,25 @@ No es necesario escribir el campo `owned` en Firestore para los documentos nuevo
 | Archivo | Tipo de cambio |
 |---|---|
 | `src/context/PokedexDataContext.tsx` | Añadir `updateCardEntry` |
-| `src/app/(protected)/pokemon/[slug]/page.tsx` | Integrar modal |
+| `src/app/(protected)/pokedex/[dexId]/page.tsx` | Integrar modal |
 | `src/components/CardDetailModal.tsx` | Nuevo componente |
 | `src/lib/i18n/es.ts` y `en.ts` | Nuevas claves |
 
-**Nota de implementación crítica:** para eliminar una entrada del mapa `cards` en Firestore, **no** usar `setDoc` con `merge: true` y `deleteField()` dentro del objeto `cards` — no elimina claves de un mapa anidado. Usar `updateDoc` con notación de punto [Dato]:
+**Nota de implementación crítica:** para eliminar una entrada del mapa `cards` en Firestore, **no** usar `setDoc` con `merge: true` y `deleteField()` dentro del objeto `cards` — no elimina claves de un mapa anidado [Dato].
+
+Adicionalmente, algunos `card_id` contienen puntos (ej. `"sv03.5-001"`). La notación de plantilla `` { [`cards.${cardId}`]: deleteField() } `` los interpreta como separadores de ruta de campo, lo que apuntaría a una ruta incorrecta. En esos casos, usar `FieldPath` con segmentos separados [No puedo confirmar esto sin prueba en emulador — requiere verificación antes de la Fase C]:
 
 ```typescript
-updateDoc(ref, { [`cards.${cardId}`]: deleteField() })
+import { FieldPath, deleteField, updateDoc } from 'firebase/firestore';
+
+// Para card_ids sin puntos (ej. "base1-44") — notación de punto funciona:
+await updateDoc(ref, { [`cards.${cardId}`]: deleteField() });
+
+// Para card_ids con puntos (ej. "sv03.5-001") — usar FieldPath:
+await updateDoc(ref, new FieldPath('cards', cardId), deleteField());
 ```
+
+Verificar en el emulador de Firestore con un `card_id` que contenga un punto antes de dar por válida esta implementación.
 
 **Dependencias:** Fase B completa.
 
@@ -669,11 +684,11 @@ updateDoc(ref, { [`cards.${cardId}`]: deleteField() })
 
 **R1 — Caché del catálogo estático en Vercel** [Dato parcial]
 
-Sin `Cache-Control: immutable` en Vercel para `/catalog/v1/`, cada navegación a `/pokemon/[slug]` hace una revalidación al servidor aunque el archivo no haya cambiado. Mitigación: añadir la cabecera en `next.config.mjs` (ver Sección 5.3). Es una línea de configuración.
+Sin `Cache-Control: immutable` en Vercel para `/catalog/v1/`, cada navegación a `/pokedex/{dexId}` hace una revalidación al servidor aunque el archivo no haya cambiado. Mitigación: añadir la cabecera en `next.config.mjs` (ver Sección 5.3). Es una línea de configuración.
 
-**R2 — `deleteField()` en mapas anidados de Firestore** [Dato]
+**R2 — `deleteField()` en mapas anidados + `card_id` con puntos** [Dato parcial]
 
-`setDoc(..., { cards: { "sv03.5-001": deleteField() } }, { merge: true })` no elimina la clave del mapa. Usar `updateDoc(ref, { [\`cards.${cardId}\`]: deleteField() })` con notación de punto. El error es silencioso y difícil de detectar.
+`setDoc(..., { cards: { "sv03.5-001": deleteField() } }, { merge: true })` no elimina la clave del mapa — el error es silencioso [Dato]. Además, `card_id` como `"sv03.5-001"` contiene un punto: la notación de plantilla `` `cards.${cardId}` `` generaría la ruta `"cards.sv03.5-001"`, que Firestore interpreta como tres niveles anidados (`cards` → `sv03` → `5-001`). Usar `FieldPath` con segmentos separados para esos casos [No puedo confirmar esto sin prueba en emulador]. Ver nota de implementación en Fase C.
 
 **R3 — Tamaño de documento en Pokémon muy populares** [Estimación]
 
@@ -683,9 +698,21 @@ Charizard (peor caso real medido: ~154 cartas en catálogo) con todas marcadas: 
 
 Si el usuario desmarca `owned` desde el modal antiguo, `updatePokemonStatus` escribe `owned: false` pero no limpia `cards`. `toDisplayState` devolverá `owned: true` porque `hasCatalogCards` sigue siendo verdadero. Mitigación: en Fase D, añadir en `updatePokemonStatus` un guard que cuando `owned === false` también escriba `cards: {}`.
 
-**R5 — Verificar compatibilidad de ruta dinámica `[slug]` en el grupo `(protected)`** [Estimación]
+**R5 — Verificar compatibilidad de ruta dinámica `[dexId]` en el grupo `(protected)`** [Estimación]
 
-La ruta `/pokemon/[slug]` hereda el guard de sesión del layout sin modificaciones. Confirmar antes de implementar que el grupo de rutas `(protected)` no tiene restricciones de nomenclatura que choquen con segmentos dinámicos.
+La ruta `/pokedex/[dexId]` hereda el guard de sesión del layout sin modificaciones. Confirmar antes de implementar que el grupo de rutas `(protected)` no tiene restricciones de nomenclatura que choquen con segmentos dinámicos.
+
+**R6 — CSP no se aplica en entorno de desarrollo** [Dato]
+
+El servidor de desarrollo de Next.js (`npm run dev`) no aplica los headers definidos en `next.config.mjs`. Las imágenes de `assets.tcgdex.net` se cargarán sin restricción en desarrollo aunque la CSP esté mal configurada, enmascarando errores de producción. Verificar la CSP en `npm run build && npm run start` (o en un Preview de Vercel) antes de declarar el cambio como válido.
+
+**R7 — `Cache-Control: immutable` para el catálogo** [Estimación]
+
+Si se configura `max-age=31536000, immutable` para `/catalog/v1/`, los usuarios verán la versión antigua durante hasta 1 año si hay un error en el catálogo — el navegador no revalidará. Mitigación: combinar con un query param o versionado de path (`?v=2`) para poder forzar revalidación cuando sea necesario, o mantener un `max-age` más corto sin `immutable` hasta que el catálogo sea estable.
+
+**R8 — Contraste de la silueta (WCAG AA)** [Estimación]
+
+`filter: brightness(0) opacity(0.35)` sobre un fondo oscuro produce un gris cuyo ratio de contraste no ha sido medido. WCAG 1.4.3 exige ratio ≥ 3:1 para componentes de interfaz gráfica no textuales. Medir con una herramienta de contraste (ej. Chrome DevTools o Colour Contrast Analyser) antes de la Fase A para confirmar que el valor de `opacity` elegido cumple el umbral, o ajustarlo si no lo hace.
 
 ### 8.7 Seguridad
 
@@ -740,10 +767,62 @@ Moverlos a `cards[id].is_shiny` sería más preciso pero requiere más cambios y
 - Opción B: tap en tarjeta → modal antiguo; «Ver cartas» dentro del modal → `/pokedex/{dexId}`.
 - **Recomendación por defecto:** opción B. Menos disruptivo y permite validar la nueva pantalla antes de comprometerse a cambiar el flujo principal.
 
-**D5 — ¿La agrupación de rarezas en 5 grupos propuesta en la Sección 6.3 se ajusta a la experiencia de coleccionista?**
+**D5 — ¿Cómo se agrupan las 32 rarezas para el filtro?**
 
-La agrupación es una estimación de diseño. Si Brayan tiene una categorización diferente que refleje mejor cómo piensa en las rarezas como coleccionista, debe revisarse antes de la Fase B [Estimación de diseño].
+La agrupación original en 5 grupos fue eliminada del documento por ser una estimación no validada. Las 32 rarezas brutas están en `rarities.json`. Brayan debe definir los grupos que reflejen su experiencia de coleccionista antes de la Fase B. Sin confirmación, el filtro de rareza se implementará sin agrupación (lista plana de las rarezas presentes en el Pokémon seleccionado).
 
-**D6 — ¿El filtro de idioma de cartas se limita a «cartas que el usuario tiene marcadas en X idioma»?**
+**D6 — ¿Qué hace exactamente el filtro de idioma? (dos conceptos distintos)**
 
-El catálogo TCGdex no incluye un campo `languages` por carta, por lo que no es posible filtrar «disponible en ES» sobre el catálogo completo [Suposición — verificar en la documentación de la API de TCGdex antes de la Fase B]. Si ese campo no existe, el filtro de idioma opera solo sobre las cartas que el usuario ya ha marcado. Confirmar si esa limitación es aceptable o si se requiere una solución alternativa.
+Los JSONs del catálogo tienen dos arrays separados: `en` y `es`. La presencia de una carta en el bloque `es` significa que fue editada en español [Dato — verificado en `public/catalog/v1/1.json`]. Los idiomas ZH, KO, JA, Otros **no** están en el catálogo; son solo atributos que el usuario asigna al marcar su carta.
+
+Esto da lugar a dos filtros de distinta naturaleza:
+
+- **«Disponible en español»**: filtra el catálogo mostrando solo las cartas que existen en el bloque `es` — opera sobre datos del catálogo, sin necesidad de que el usuario haya marcado nada.
+- **«Mis cartas en idioma X»**: filtra la colección del usuario mostrando las cartas marcadas con `cards[id].language === "es"` (u otro idioma) — opera solo sobre las cartas que el usuario ya tiene marcadas.
+
+**Opciones:**
+- Opción A: implementar ambos filtros — «Disponible en ES» (catálogo) y «Mis cartas en idioma X» (colección).
+- Opción B: implementar solo el filtro de colección del usuario («¿en qué idioma tengo esta carta?»), que es el caso de uso principal de coleccionista.
+- **Recomendación por defecto:** Opción B — más simple y directamente útil. Añadir el filtro de «disponible en ES» en una iteración posterior si se necesita.
+
+---
+
+**D7 — ¿Cómo gestiona el grid los ~1215 Pokémon actuales (1025 base + ~190 formas)?** ⚠️ BLOQUEANTE — decidir antes de la Fase A
+
+El grid actual muestra las formas especiales (Mega, Gigantamax, Regionales) como fichas independientes junto a las especies base [Dato — verificado en `pokedex/page.tsx:148–170`]. El catálogo TCGdex está indexado por `dexId` (número nacional), no por slug. Existen tres estrategias posibles:
+
+- **Opción A — Un dexId, una ficha**: el grid siempre muestra exactamente 1025 fichas (una por dexId). Las formas especiales de un Pokémon se acceden desde su ficha principal (dentro de `/pokedex/{dexId}`). Requiere restructurar el grid actual y cambiar el punto de entrada para las formas.
+- **Opción B — Mantener el grid actual (~1215 fichas)**: formas y base son fichas independientes en el grid. La nueva pantalla `/pokedex/{dexId}` muestra las cartas del dexId del Pokémon base. Las formas no tienen pantalla de cartas propia (su `dexId` es el mismo que la base).
+- **Opción C — Grid híbrido**: base + formas en el grid; cada forma tiene su propia ficha; la ruta sería `/pokedex/{dexId}` para base y `/pokedex/{dexId}/forma/{formType}` para formas (introduce complejidad de rutas).
+
+**Recomendación:** Opción A. El catálogo está organizado por `dexId`, y la Pokédex Nacional tiene 1025 números. Un dexId = una ficha = una pantalla de cartas es el modelo más coherente con el catálogo. El coste es refactorizar el grid una vez.
+
+**Implicación en la implementación:** si se elige la Opción A, el grid debe filtrarse a `basePokemon` (`form_type === null`) antes de proceder con la Fase A. Si se elige la Opción B o C, la Fase A puede proceder sin cambios en el grid.
+
+---
+
+**D8 — ¿`is_bulk` y `bulk_quantity` se mantienen a nivel de Pokémon o se mueven a nivel de carta?**
+
+Actualmente `is_bulk` y `bulk_quantity` son campos raíz del documento de colección (nivel Pokémon). Con el nuevo sistema de `cards`, podría tener sentido indicar qué carta concreta está en bulk.
+
+- **Opción A (recomendada):** mantenerlos a nivel de Pokémon. El bulk es "tengo copias sobrantes de alguna carta de este Pokémon" — su granularidad actual es suficiente para la pantalla `/bulk` y el sistema de exportación/importación.
+- **Opción B:** mover a nivel de carta — `cards[id].is_bulk = true`, `cards[id].bulk_quantity = N`. Más preciso pero añade complejidad al modal de carta y requiere actualizar la pantalla `/bulk`.
+
+---
+
+**D9 — ¿Qué muestra la UI cuando un documento tiene `owned: true`, `variant: "holo"` pero `cards: {}`?**
+
+`toDisplayState` devuelve `owned: true` (porque `legacyOwned === true`) y `hasCatalogCards === false`. En el grid, el Pokémon se vería como "poseído" (sprite en color) pero sin badge de número de cartas. En la pantalla de cartas, el Pokémon aparecería como "sin cartas marcadas".
+
+- **Opción A (recomendada):** aceptar esta inconsistencia temporal. El usuario verá el Pokémon con sprite en color pero badge vacío hasta que migre manualmente al sistema nuevo desde el modal. No se requiere ninguna acción técnica adicional.
+- **Opción B:** mostrar un indicador visual diferenciado ("tienes este Pokémon con el sistema antiguo — migrar") que invite al usuario a actualizar al nuevo sistema.
+
+---
+
+### Decisiones confirmadas
+
+| Decisión | Resolución |
+|---|---|
+| Esquema de datos | **Opción A+** — extensión del documento existente con `cards` + `favorite` [Dato] |
+| Ruta de la nueva pantalla | **`/pokedex/[dexId]`** — dexId numérico, no slug [Dato] |
+| D3 — Shiny/Promo | Mantener a nivel de Pokémon; granularidad por carta en fase futura [Recomendación aceptada] |
