@@ -40,7 +40,7 @@ export default function CardThumbnail({
   const [imgError, setImgError] = useState(false);
 
   const showPlaceholder = !card.image || imgError;
-  const imgSrc = card.image ? `${card.image}/high.jpg` : "";
+  const imgSrc = card.image ? `${card.image}/low.webp` : "";
 
   const displayName = displayLang === "es" && card.hasEs && card.nameEs
     ? card.nameEs

@@ -294,11 +294,15 @@ function CardsContent({ params }: { params: { dexId: string } }) {
             className="text-xs bg-gray-800 text-gray-300 rounded-full px-2.5 py-1 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500 max-w-[150px] truncate"
           >
             <option value="">{t("cards.allRarities")}</option>
-            {availableRarities.map((r) => (
-              <option key={r} value={r}>
-                {labelForRarity(r, displayLang)}
-              </option>
-            ))}
+            {(() => {
+              const usedLabels = new Set<string>();
+              return availableRarities.map((r) => {
+                let label = labelForRarity(r, displayLang);
+                if (usedLabels.has(label)) label = r; // fallback al literal de la API si la etiqueta traducida ya fue usada
+                usedLabels.add(label);
+                return <option key={r} value={r}>{label}</option>;
+              });
+            })()}
           </select>
 
           {/* Display language toggle */}
