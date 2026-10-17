@@ -7,9 +7,10 @@ import { notFound } from "next/navigation";
 import { usePokedexContext } from "@/context/PokedexDataContext";
 import { useLanguage } from "@/context/LanguageContext";
 import CardThumbnail, { type CatalogCard, type MergedCard } from "@/components/CardThumbnail";
-import { getRarityLabel } from "@/lib/rarities";
 
 // ─── types ──────────────────────────────────────────────────────────────────
+
+type RarityEntry = { tcgdex: string; es: string | null; wikidex: boolean; cards: number };
 
 interface CatalogData {
   en: CatalogCard[];
@@ -75,6 +76,7 @@ function CardsContent({ params }: { params: { dexId: string } }) {
   // Catalog fetch state — retryCount lets the user retry without changing dexId
   const [retryCount, setRetryCount] = useState(0);
   const [catalogData, setCatalogData] = useState<MergedCard[] | null>(null);
+  const [rarityMap, setRarityMap] = useState<Record<string, { es: string | null }>>({});
   const [fetchLoading, setFetchLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
 
@@ -83,14 +85,14 @@ function CardsContent({ params }: { params: { dexId: string } }) {
     let cancelled = false;
     setFetchLoading(true);
     setFetchError(false);
-    fetch(`/catalog/v1/${dexId}.json`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json() as Promise<CatalogData>;
-      })
-      .then((data) => {
+    Promise.all([
+      fetch(`/catalog/v1/${dexId}.json`).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() as Promise<CatalogData>; }),
+      fetch(`/catalog/v1/rarities.json`).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() as Promise<RarityEntry[]>; }),
+    ])
+      .then(([catalogRaw, raritiesRaw]) => {
         if (!cancelled) {
-          setCatalogData(mergeCards(data));
+          setCatalogData(mergeCards(catalogRaw));
+          setRarityMap(Object.fromEntries(raritiesRaw.map((e) => [e.tcgdex, { es: e.es }])));
           setFetchLoading(false);
         }
       })
@@ -102,6 +104,13 @@ function CardsContent({ params }: { params: { dexId: string } }) {
       });
     return () => { cancelled = true; };
   }, [dexId, validDexId, retryCount]);
+
+  function labelForRarity(rarity: string, lang: "es" | "en"): string {
+    if (rarity === "None") return lang === "es" ? t("cards.rarityNone") : "No rarity";
+    const entry = rarityMap[rarity];
+    if (lang === "es" && entry?.es) return entry.es;
+    return rarity;
+  }
 
   // Filter state from URL
   const statusFilter = (searchParams.get("status") as StatusFilter | null) ?? "all";
@@ -287,7 +296,7 @@ function CardsContent({ params }: { params: { dexId: string } }) {
             <option value="">{t("cards.allRarities")}</option>
             {availableRarities.map((r) => (
               <option key={r} value={r}>
-                {r === "None" ? t("cards.rarityNone") : getRarityLabel(r, displayLang)}
+                {labelForRarity(r, displayLang)}
               </option>
             ))}
           </select>
@@ -354,6 +363,7 @@ function CardsContent({ params }: { params: { dexId: string } }) {
                     card={card}
                     isOwned={isOwned}
                     displayLang={displayLang}
+                    rarityLabel={labelForRarity(card.rarity, displayLang)}
                     ownedAltLabel={t("cards.ownedAlt")}
                     fallbackBadgeLabel={t("cards.fallbackLangBadge")}
                     noImageAltLabel={t("cards.noImageAlt")}

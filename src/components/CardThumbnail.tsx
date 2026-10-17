@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { getRarityLabel } from "@/lib/rarities";
 
 export interface CatalogCard {
   id: string;
@@ -23,6 +22,7 @@ interface CardThumbnailProps {
   card: MergedCard;
   isOwned: boolean;
   displayLang: "en" | "es";
+  rarityLabel: string;
   ownedAltLabel: string;
   fallbackBadgeLabel: string;
   noImageAltLabel: string;
@@ -32,6 +32,7 @@ export default function CardThumbnail({
   card,
   isOwned,
   displayLang,
+  rarityLabel,
   ownedAltLabel,
   fallbackBadgeLabel,
   noImageAltLabel,
@@ -46,7 +47,6 @@ export default function CardThumbnail({
     : card.name;
   const isEnFallback = displayLang === "es" && !card.hasEs;
 
-  const rarityLabel = getRarityLabel(card.rarity, displayLang);
   // Include owned state in aria-label so screen readers announce it (WCAG 1.3.1)
   const altText = isOwned
     ? `${displayName} - ${card.setName} - ${rarityLabel} — ${ownedAltLabel}`
