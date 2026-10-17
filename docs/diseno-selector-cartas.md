@@ -828,3 +828,62 @@ Actualmente `is_bulk` y `bulk_quantity` son campos raíz del documento de colecc
 | D3 — Shiny/Promo | Mantener a nivel de Pokémon; granularidad por carta en fase futura [Recomendación aceptada] |
 | D7 — Grid con formas | **Opción A** — grid muestra exactamente 1025 fichas (`form_type === null`); formas accesibles desde `/pokedex/{dexId}` [Dato: decisión confirmada] |
 | owned/hasCatalogCards contract | owned mostrado = hasCatalogCards \|\| owned_legacy. No se puede desmarcar owned desde el modal si hasCatalogCards=true; requiere eliminar las cartas primero desde /pokedex/{dexId}. [Dato: implementado en PokemonModal.tsx handleToggleOwned] |
+
+---
+
+## Sección 10 — Estado de Fase B
+
+**Fecha de cierre:** 2026-10-17
+**Rama:** `feat/ui-selector-fase-b`
+
+### 10.1 Entregables completados
+
+| Archivo | Tipo de cambio |
+|---|---|
+| `src/app/(protected)/pokedex/[dexId]/page.tsx` | Ampliado — implementación completa (sustituye la ruta shell de Fase A) [Dato] |
+| `src/components/CardThumbnail.tsx` | Nuevo componente [Dato] |
+| `src/lib/rarities.ts` | Nuevo — mapping estático de 32 rarezas desde `rarities.json` [Dato] |
+| `src/lib/i18n/es.ts` y `en.ts` | Claves nuevas bajo el namespace `cards` [Dato] |
+
+### 10.2 Hallazgos verificados sobre el catálogo
+
+| Hallazgo | Tipo |
+|---|---|
+| Campos de cada carta: `id`, `localId`, `name`, `setId`, `setName`, `rarity`, `image`, `variants` | [Dato] |
+| No existe campo de fecha/release ni campo de forma en los documentos de carta | [Dato] |
+| Formato de imagen: `{image}/high.jpg` → HTTP 200 `image/jpeg` (verificado con HEAD) | [Dato] |
+| Formatos alternativos disponibles en el mismo path base: `/high.webp`, `/high.png`, `/low.jpg` | [Dato] |
+| Cartas con `image: ""` en Pikachu (dexId 25): 48 de 232 | [Dato] |
+| Pikachu (dexId 25): 232 cartas EN, 141 cartas ES | [Dato] |
+| Ningún Pokémon tiene 0 cartas EN en los 1025 archivos del catálogo | [Dato] |
+
+### 10.3 Formas en el catálogo — aclaración de diseño
+
+El catálogo (`{dexId}.json`) no tiene campo de forma. Todas las cartas de un `dexId` aparecen mezcladas en un único array `en`. Las distinciones de forma (Mega, GX, VMAX, etc.) existen solo en el string `name` de la carta (p. ej. "Charizard-GX", "Charizard VMAX"). No hay campo `formType` estructurado. El catálogo modela ediciones de impresión TCG, no formas de especie Pokémon — no es posible agrupar por forma a partir de los datos del catálogo sin parsear el nombre. [Dato]
+
+### 10.4 Orden de las cartas
+
+No existe campo de fecha de lanzamiento en las entradas del catálogo. El orden de presentación en Fase B es el orden del array JSON tal como lo produce el script ETL (aproximadamente por `setId` dentro del historial de cada Pokémon). [Dato]
+
+### 10.5 Rendimiento
+
+232 cartas EN (Pikachu, caso más grande) con CSS grid y `loading="lazy"` nativo en `<img>` no presentan problema de render medible. No se requiere virtualización para Fase B. [Dato]
+
+### 10.6 Decisiones tomadas en Fase B
+
+| Decisión | Resolución |
+|---|---|
+| D5 — Agrupación de rarezas | Lista plana (rarezas presentes en ese Pokémon, sin agrupar) — valor por defecto indicado en Sección 9 [Dato] |
+| D6 — Filtro de idioma | Toggle de vista EN/ES (modo de visualización), no filtro de ownership. No oculta cartas. Coherente con la especificación. [Dato] |
+| Retry ante error de carga | `retryCount` en estado local dispara re-ejecución del `useEffect` — sin recarga de página [Dato] |
+| `clearFilters()` | Llama a `router.replace(pathname)` para eliminar todos los `searchParams` de una vez [Dato] |
+
+### 10.7 Correcciones de accesibilidad aplicadas
+
+- Estado "poseída" añadido al `aria-label` de cada carta (antes era silencioso para lectores de pantalla) [Dato]
+- `aria-hidden` en el badge visual de checkmark (evita doble anuncio) [Dato]
+- `aria-disabled` redundante eliminado (el atributo nativo `disabled` es suficiente) [Dato]
+
+### 10.8 Pendiente para Fase C
+
+La Fase B no implementa el marcado de cartas individuales ni el modal de detalle de carta (`CardDetailModal`). Esos entregables corresponden a la Fase C tal como se describe en la Sección 8.4. Las advertencias sobre `deleteField()` en mapas anidados con `card_id` que contienen puntos (Riesgo R2) siguen pendientes de verificación en el emulador.
