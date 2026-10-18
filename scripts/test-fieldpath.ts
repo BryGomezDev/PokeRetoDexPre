@@ -133,12 +133,12 @@ async function testC(db: Firestore) {
 }
 
 async function testD(db: Firestore) {
-  console.log("\n── Test D: setDoc(merge:true) OVERWRITES sibling keys in map ──────");
+  console.log("\n── Test D: setDoc(merge:true) PRESERVES sibling keys in map ────────");
   const ref = docRef("testD");
   // Start: two keys
   await setDoc(ref, { cards: { id1: { copies: 1 }, id2: { copies: 2 } } });
 
-  // Update only id1 via setDoc merge — does id2 survive?
+  // Write only id1 via setDoc merge — does id2 survive?
   await setDoc(ref, { cards: { id1: { copies: 3 } } }, { merge: true });
 
   const snap = await getDoc(ref);
@@ -148,14 +148,20 @@ async function testD(db: Firestore) {
   const id1 = cards["id1"] as { copies: number } | undefined;
   const id2 = cards["id2"] as { copies: number } | undefined;
 
-  // The question: does id2 still exist?
+  // [Dato] Verified behavior: setDoc(merge:true) merges at document level and
+  // PRESERVES sibling keys inside a map value — id2 survives.
+  // Consequence: setDoc(merge) cannot delete absent card keys;
+  // per-key FieldPath + deleteField() is required for deletion.
   if (id2 !== undefined) {
-    // setDoc with merge:true merges at the DOCUMENT level (not field level),
-    // meaning it merges the top-level 'cards' key but REPLACES its entire value.
-    // id2 should be GONE.
-    fail("D", `Bug NOT confirmed — id2 still present (${label(id2)}). setDoc merge kept sibling. Re-check Firestore version.`);
+    pass("D", `id2 SURVIVED (${label(id2)}) — setDoc(merge:true) preserves sibling map keys. FieldPath+deleteField() required to delete cards.`);
   } else {
-    pass("D", `BUG CONFIRMED — id2 was OVERWRITTEN. Only id1 remains: ${label(id1)}. setDoc(merge:true) replaces the entire 'cards' map.`);
+    fail("D", `id2 was wiped — unexpected. setDoc(merge:true) replaced the entire 'cards' map. Full: ${label(cards)}`);
+  }
+
+  if (id1?.copies === 3) {
+    pass("D-update", `id1 updated to copies:3 as expected.`);
+  } else {
+    fail("D-update", `Expected id1.copies=3, got ${label(id1)}`);
   }
 }
 
@@ -244,6 +250,34 @@ async function testH(db: Firestore) {
   }
 }
 
+async function testI(db: Firestore) {
+  console.log("\n── Test I: First card with dotted ID in non-existent doc via setDoc ─");
+  const ref = doc(db, "test_col", "testI_" + Date.now());
+  // Doc must not exist — fresh timestamped ID guarantees this
+
+  await setDoc(ref, { cards: { "sv03.5-001": { copies: 1, language: "es" } }, updated_at: null }, { merge: true });
+
+  const snap = await getDoc(ref);
+  const data = snap.data() as Record<string, unknown>;
+  const cards = data.cards as Record<string, unknown>;
+  console.log("  Read-back:", label(cards));
+
+  const entry = cards["sv03.5-001"] as { copies: number; language: string } | undefined;
+  if (entry?.copies === 1 && entry?.language === "es") {
+    pass("I", `cards["sv03.5-001"] = ${label(entry)} — literal dotted key stored via setDoc.`);
+  } else {
+    fail("I", `Expected {copies:1, language:"es"}, got ${label(entry)}`);
+  }
+
+  // Dot must NOT be interpreted as a nested path separator in the map value
+  const nestedSv03 = data["sv03"] as unknown;
+  if (nestedSv03 === undefined) {
+    pass("I-dot", "No nested 'sv03' key — dot in map value treated as literal ✓");
+  } else {
+    fail("I-dot", `Unexpected nested key 'sv03': ${label(nestedSv03)}`);
+  }
+}
+
 // ── runner ────────────────────────────────────────────────────────────────────
 async function run() {
   console.log("=== Firestore FieldPath Emulator Tests ===");
@@ -260,6 +294,7 @@ async function run() {
     await testF(db);
     await testG(db);
     await testH(db);
+    await testI(db);
   } finally {
     await cleanup();
     console.log("\n=== Done ===");
