@@ -74,7 +74,7 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
   // Refs for updateCardEntry debounce + rollback
   const pokemonRef = useRef<PokemonWithStatus[]>([]);
   const cardTimerRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const cardRollbackRef = useRef<Map<string, Record<string, CardEntry>>>(new Map());
+  const cardRollbackRef = useRef<Map<string, { cards: Record<string, CardEntry>; ownedWas: boolean }>>(new Map());
   const pendingCardsRef = useRef<Map<string, Record<string, CardEntry>>>(new Map());
 
   // Keep pokemonRef in sync with state (no render side-effect)
@@ -319,7 +319,8 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
 
       // Save rollback only at the start of the debounce window
       if (!cardTimerRef.current.has(slug)) {
-        cardRollbackRef.current.set(slug, { ...baseCards });
+        const ownedNow = pokemonRef.current.find((p) => p.slug === slug)?.owned ?? false;
+        cardRollbackRef.current.set(slug, { cards: { ...baseCards }, ownedWas: ownedNow });
       }
 
       const newCards = applyCardEntry(baseCards, cardId, entry);
@@ -327,11 +328,17 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
       // Update pending state synchronously (for the next rapid click)
       pendingCardsRef.current.set(slug, newCards);
 
-      // Optimistic UI update
+      // Optimistic UI update — `owned` derived from cards count to stay in sync with silueta.
+      // Preserves legacy `owned` (set via old modal, no catalog cards) by checking !hasCatalogCards.
       setPokemon((prev) =>
         prev.map((p) =>
           p.slug === slug
-            ? { ...p, cards: newCards, hasCatalogCards: Object.keys(newCards).length > 0 }
+            ? {
+                ...p,
+                cards: newCards,
+                hasCatalogCards: Object.keys(newCards).length > 0,
+                owned: Object.keys(newCards).length > 0 || (p.owned && !p.hasCatalogCards),
+              }
             : p
         )
       );
@@ -361,7 +368,12 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
             setPokemon((prev) =>
               prev.map((p) =>
                 p.slug === slug
-                  ? { ...p, cards: rollback, hasCatalogCards: Object.keys(rollback).length > 0 }
+                  ? {
+                      ...p,
+                      cards: rollback.cards,
+                      hasCatalogCards: Object.keys(rollback.cards).length > 0,
+                      owned: rollback.ownedWas,
+                    }
                   : p
               )
             );
