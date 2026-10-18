@@ -2,9 +2,25 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Validates a single card entry map {copies, language}.
+    // Cannot be applied automatically to all keys in data.cards — Firestore Rules
+    // have no iteration primitives. Validation of all dynamic keys is enforced client-side.
+    // This function is available for future paths where the key is known at rule-write time.
+    function validCardEntry(entry) {
+      return entry is map
+        && entry.copies is int
+        && entry.copies >= 1
+        && entry.copies <= 99
+        && (!('language' in entry) || entry.language == null
+            || entry.language in ["es", "en", "zh", "ko", "ja", "otros"]);
+    }
+
     function validCollectionDoc(data) {
       return (!('owned' in data) || data.owned is bool)
-        && (!('cards' in data) || data.cards is map)
+        && (!('cards' in data) || (
+              data.cards is map
+              && data.cards.size() <= 200
+           ))
         && (!('favorite' in data) || data.favorite is bool)
         && (!('bulk_quantity' in data) || (data.bulk_quantity is number && data.bulk_quantity >= 0))
         && (!('is_bulk' in data) || data.is_bulk is bool)
