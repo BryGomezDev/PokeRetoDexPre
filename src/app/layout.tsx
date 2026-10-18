@@ -3,7 +3,6 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { LanguageProvider } from "@/context/LanguageContext";
-import { HtmlLangSync } from "@/components/HtmlLangSync";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -23,7 +22,6 @@ export default function RootLayout({
       <body className="antialiased bg-gray-950 text-white min-h-screen">
         <AuthProvider>
           <LanguageProvider>
-            <HtmlLangSync />
             {children}
           </LanguageProvider>
         </AuthProvider>
