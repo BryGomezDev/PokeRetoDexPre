@@ -1,22 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import type { CatalogCard, MergedCard } from "@/lib/cards";
 
-export interface CatalogCard {
-  id: string;
-  localId: string;
-  name: string;
-  setId: string;
-  setName: string;
-  rarity: string;
-  image: string;
-  variants: Record<string, boolean>;
-}
-
-export interface MergedCard extends CatalogCard {
-  nameEs: string | null;
-  hasEs: boolean;
-}
+export type { CatalogCard, MergedCard };
 
 interface CardThumbnailProps {
   card: MergedCard;

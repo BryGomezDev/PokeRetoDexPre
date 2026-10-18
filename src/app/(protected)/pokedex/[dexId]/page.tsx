@@ -6,7 +6,8 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { notFound } from "next/navigation";
 import { usePokedexContext } from "@/context/PokedexDataContext";
 import { useLanguage } from "@/context/LanguageContext";
-import CardThumbnail, { type CatalogCard, type MergedCard } from "@/components/CardThumbnail";
+import CardThumbnail from "@/components/CardThumbnail";
+import { mergeCards, filterCards, type CatalogCard, type MergedCard } from "@/lib/cards";
 
 // ─── types ──────────────────────────────────────────────────────────────────
 
@@ -24,16 +25,6 @@ const STATUS_KEYS = {
   owned: "cards.statusOwned",
   missing: "cards.statusMissing",
 } as const;
-
-// ─── merge helper ────────────────────────────────────────────────────────────
-
-function mergeCards(data: CatalogData): MergedCard[] {
-  const esMap = new Map(data.es.map((c) => [c.id, c]));
-  return data.en.map((c) => {
-    const esCard = esMap.get(c.id);
-    return { ...c, nameEs: esCard?.name ?? null, hasEs: !!esCard };
-  });
-}
 
 // ─── Suspense shell ──────────────────────────────────────────────────────────
 
@@ -155,14 +146,8 @@ function CardsContent({ params }: { params: { dexId: string } }) {
   // Filtered cards
   const filteredCards = useMemo(() => {
     if (!catalogData) return [];
-    return catalogData.filter((c) => {
-      const owned = poke ? Object.hasOwn(poke.cards, c.id) : false;
-      if (statusFilter === "owned" && !owned) return false;
-      if (statusFilter === "missing" && owned) return false;
-      if (setFilter && c.setName !== setFilter) return false;
-      if (rarityFilter && c.rarity !== rarityFilter) return false;
-      return true;
-    });
+    const isOwned = (id: string) => poke ? Object.hasOwn(poke.cards, id) : false;
+    return filterCards(catalogData, isOwned, statusFilter, setFilter, rarityFilter);
   }, [catalogData, poke, statusFilter, setFilter, rarityFilter]);
 
   const totalCards = catalogData?.length ?? 0;
