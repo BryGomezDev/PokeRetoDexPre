@@ -55,10 +55,10 @@ export default function CardThumbnail({
         {showPlaceholder ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 p-2 border border-dashed border-zinc-700 rounded-lg">
             <span className="text-zinc-600 text-lg leading-none" aria-hidden="true">⊘</span>
-            <span className="text-zinc-500 text-[10px] font-medium leading-tight text-center line-clamp-2">
+            <span className="text-zinc-400 text-[10px] font-medium leading-tight text-center line-clamp-2">
               {card.setName}
             </span>
-            <span className="text-zinc-600 text-[9px] leading-tight text-center">
+            <span className="text-zinc-400 text-[9px] leading-tight text-center">
               {rarityLabel}
             </span>
             <span className="sr-only">{noImageAltLabel}</span>
@@ -98,7 +98,7 @@ export default function CardThumbnail({
       {/* Card label below image */}
       <div className="mt-1 px-0.5">
         <p className="text-[10px] text-gray-300 leading-tight truncate">{displayName}</p>
-        <p className="text-[9px] text-gray-500 leading-tight truncate">{rarityLabel}</p>
+        <p className="text-[9px] text-gray-400 leading-tight truncate">{rarityLabel}</p>
       </div>
     </button>
   );

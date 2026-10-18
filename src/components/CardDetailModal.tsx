@@ -47,10 +47,24 @@ export default function CardDetailModal({
     panelRef.current?.focus();
   }, []);
 
-  // Close on Escape
+  // Close on Escape + focus trap (WCAG 2.1.2)
   useEffect(() => {
+    const panel = panelRef.current;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key !== "Tab" || !panel) return;
+      const focusable = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
@@ -68,14 +82,9 @@ export default function CardDetailModal({
   }, [localCopies, localLanguage]);
 
   function handleDecrement() {
-    setLocalCopies((prev) => {
-      const next = prev - 1;
-      if (next <= 0) {
-        onUpdateEntry(card.id, null);
-        return 0;
-      }
-      return next;
-    });
+    setLocalCopies((prev) => Math.max(prev - 1, 0));
+    // useEffect handles the onUpdateEntry call; also clear stale language when reaching 0
+    if (localCopies <= 1) setLocalLanguage(null);
   }
 
   function handleIncrement() {
@@ -98,9 +107,9 @@ export default function CardDetailModal({
   return (
     // Overlay — click closes, flex-centers panel on desktop
     <div
+      role="presentation"
       className="fixed inset-0 z-50 bg-black/60 lg:flex lg:items-center lg:justify-center"
       onClick={onClose}
-      aria-hidden="true"
     >
       {/* Panel */}
       <div
@@ -127,7 +136,7 @@ export default function CardDetailModal({
               {card.setName}
               {card.localId ? ` · #${card.localId}` : ""}
             </p>
-            <p className="text-xs text-gray-500 mt-0.5">{rarityLabel}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{rarityLabel}</p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {/* EN fallback badge */}
@@ -157,7 +166,7 @@ export default function CardDetailModal({
                 <span className="text-zinc-400 text-xs font-medium leading-tight text-center line-clamp-2">
                   {card.setName}
                 </span>
-                <span className="text-zinc-500 text-[10px] leading-tight text-center">
+                <span className="text-zinc-400 text-[10px] leading-tight text-center">
                   {rarityLabel}
                 </span>
               </div>
@@ -204,16 +213,14 @@ export default function CardDetailModal({
                 {t("cards.languageLabel")}
               </legend>
               <div
-                role="radiogroup"
-                aria-label={t("cards.languageLabel")}
+                role="group"
                 className="flex gap-2 flex-wrap"
               >
                 {LANG_OPTIONS.map(({ value, label }) => (
                   <button
                     key={value}
                     type="button"
-                    role="radio"
-                    aria-checked={localLanguage === value}
+                    aria-pressed={localLanguage === value}
                     onClick={() =>
                       setLocalLanguage((prev) => (prev === value ? null : value))
                     }
