@@ -101,7 +101,24 @@ assert.strictEqual(deriveOwned({}, true, false), true, "D3: owned legacy sin cat
 // D4: última carta eliminada (tenía catalog cards) → false
 assert.strictEqual(deriveOwned({}, true, true), false, "D4: última carta quitada → owned = false");
 
-console.log("✓ deriveOwned: primera carta, quitar última, legacy owned");
+// D5: ciclo añadir→quitar dentro de la misma ventana de debounce, pokémon legacy owned
+// legacyOwned se captura UNA vez del snapshot de rollback (ownedWas=true, hasCatalogCardsWas=false)
+// y se usa como constante cerrada durante todo el debounce.
+const afterAdd5 = applyCardEntry({}, "sv03.5-001", { copies: 1, language: "es" });
+assert.strictEqual(
+  deriveOwned(afterAdd5, true, false),
+  true,
+  "D5a: add card to legacy-owned → owned = true"
+);
+const afterRemove5 = applyCardEntry(afterAdd5, "sv03.5-001", null);
+assert.strictEqual(
+  deriveOwned(afterRemove5, true, false),
+  true,
+  "D5b: remove card from legacy-owned → owned preserved (legacyOwned flag = true)"
+);
+assert.strictEqual(Object.keys(afterRemove5).length, 0, "D5c: cards map empty after remove");
+
+console.log("✓ deriveOwned: primera carta, quitar última, legacy owned, ciclo add→remove legacy");
 
 // ─── Output ──────────────────────────────────────────────────────────────────
 console.log(`✓ owned: ${filteredOwned.length}/5`);
