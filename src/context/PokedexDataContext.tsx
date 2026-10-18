@@ -7,6 +7,9 @@ import {
   getDocs,
   onSnapshot,
   setDoc,
+  updateDoc,
+  deleteField,
+  FieldPath,
   orderBy,
   query,
   serverTimestamp,
@@ -74,7 +77,7 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
   // Refs for updateCardEntry debounce + rollback
   const pokemonRef = useRef<PokemonWithStatus[]>([]);
   const cardTimerRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const cardRollbackRef = useRef<Map<string, { cards: Record<string, CardEntry>; ownedWas: boolean }>>(new Map());
+  const cardRollbackRef = useRef<Map<string, { cards: Record<string, CardEntry>; ownedWas: boolean; hasCatalogCardsWas: boolean }>>(new Map());
   const pendingCardsRef = useRef<Map<string, Record<string, CardEntry>>>(new Map());
 
   // Keep pokemonRef in sync with state (no render side-effect)
@@ -319,9 +322,18 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
 
       // Save rollback only at the start of the debounce window
       if (!cardTimerRef.current.has(slug)) {
-        const ownedNow = pokemonRef.current.find((p) => p.slug === slug)?.owned ?? false;
-        cardRollbackRef.current.set(slug, { cards: { ...baseCards }, ownedWas: ownedNow });
+        const current = pokemonRef.current.find((p) => p.slug === slug);
+        cardRollbackRef.current.set(slug, {
+          cards: { ...baseCards },
+          ownedWas: current?.owned ?? false,
+          hasCatalogCardsWas: current?.hasCatalogCards ?? false,
+        });
       }
+
+      // Snapshot legacy-owned state before setPokemon (avoids stale closure inside callback).
+      // legacyOwned = true only when pokemon was owned via old modal (owned=true, hasCatalogCards=false).
+      const rollbackSnapshot = cardRollbackRef.current.get(slug)!;
+      const legacyOwned = rollbackSnapshot.ownedWas && !rollbackSnapshot.hasCatalogCardsWas;
 
       const newCards = applyCardEntry(baseCards, cardId, entry);
 
@@ -329,7 +341,7 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
       pendingCardsRef.current.set(slug, newCards);
 
       // Optimistic UI update — `owned` derived from cards count to stay in sync with silueta.
-      // Preserves legacy `owned` (set via old modal, no catalog cards) by checking !hasCatalogCards.
+      // Preserves legacy `owned` (set via old modal, no catalog cards) by checking legacyOwned.
       setPokemon((prev) =>
         prev.map((p) =>
           p.slug === slug
@@ -337,7 +349,7 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
                 ...p,
                 cards: newCards,
                 hasCatalogCards: Object.keys(newCards).length > 0,
-                owned: Object.keys(newCards).length > 0 || (p.owned && !p.hasCatalogCards),
+                owned: Object.keys(newCards).length > 0 || legacyOwned,
               }
             : p
         )
@@ -356,14 +368,23 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
 
         if (!cardsToWrite || !uid) return;
 
-        try {
-          await setDoc(
-            doc(db, "users", uid, "collection", slug),
-            { cards: cardsToWrite, updated_at: serverTimestamp() },
-            { merge: true }
-          );
-        } catch (err) {
-          console.error("[updateCardEntry]", err);
+        const rollbackCards = rollback?.cards ?? {};
+        const docRef = doc(db, "users", uid, "collection", slug);
+
+        // Per-key FieldPath writes to avoid setDoc(merge:true) preserving deleted card keys.
+        // Emulator Test D confirmed: setDoc(merge:true) with partial cards map keeps absent keys.
+        const writeArgs: (FieldPath | string | unknown)[] = [];
+        for (const [id, e] of Object.entries(cardsToWrite)) {
+          writeArgs.push(new FieldPath("cards", id), e);
+        }
+        for (const id of Object.keys(rollbackCards)) {
+          if (!(id in cardsToWrite)) {
+            writeArgs.push(new FieldPath("cards", id), deleteField());
+          }
+        }
+        writeArgs.push("updated_at", serverTimestamp());
+
+        function doRollback() {
           if (rollback !== undefined) {
             setPokemon((prev) =>
               prev.map((p) =>
@@ -380,6 +401,27 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
           }
           setError("No se pudo guardar la carta. Comprueba tu conexión.");
           setTimeout(() => setError(null), 4000);
+        }
+
+        try {
+          await updateDoc(
+            docRef,
+            writeArgs[0] as string | FieldPath,
+            writeArgs[1],
+            ...writeArgs.slice(2)
+          );
+        } catch (err) {
+          if ((err as { code?: string }).code === "not-found") {
+            // First card for this pokemon — document doesn't exist yet.
+            try {
+              await setDoc(docRef, { cards: cardsToWrite, updated_at: serverTimestamp() }, { merge: true });
+            } catch {
+              doRollback();
+            }
+          } else {
+            console.error("[updateCardEntry]", err);
+            doRollback();
+          }
         }
       }, 500);
 

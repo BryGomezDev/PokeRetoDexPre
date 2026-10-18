@@ -25,7 +25,7 @@ import {
 // ── emulator config ─────────────────────────────────────────────────────────
 const EMULATOR_HOST = "127.0.0.1";
 const EMULATOR_PORT = 8080;
-const PROJECT_ID    = "pokeretodex-test"; // any string works with the emulator
+const PROJECT_ID    = "demo-test"; // demo- prefix prevents any accidental real-Firebase traffic
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 let app: FirebaseApp;
