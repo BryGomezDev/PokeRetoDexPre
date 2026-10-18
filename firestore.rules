@@ -19,7 +19,7 @@ service cloud.firestore {
       return (!('owned' in data) || data.owned is bool)
         && (!('cards' in data) || (
               data.cards is map
-              && data.cards.size() <= 200
+              && data.cards.size() <= 500
            ))
         && (!('favorite' in data) || data.favorite is bool)
         && (!('bulk_quantity' in data) || (data.bulk_quantity is number && data.bulk_quantity >= 0))
