@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import type { CardEntry } from "@/lib/cards";
 import {
   collection,
   doc,
@@ -29,12 +30,8 @@ export interface PokemonDoc {
 }
 
 export type Variant = "basica" | "holo" | "alternativa" | "fullart";
+export type { CardEntry } from "@/lib/cards";
 export type CardLanguage = "es" | "en" | "zh" | "ko" | "ja" | "otros";
-
-export interface CardEntry {
-  copies: number;
-  language: CardLanguage | null;
-}
 
 export interface PokemonWithStatus extends PokemonDoc {
   owned: boolean;

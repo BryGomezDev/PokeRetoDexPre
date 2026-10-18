@@ -1,9 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { CatalogCard, MergedCard } from "@/lib/cards";
-
-export type { CatalogCard, MergedCard };
+import type { MergedCard } from "@/lib/cards";
 
 interface CardThumbnailProps {
   card: MergedCard;
@@ -13,6 +11,7 @@ interface CardThumbnailProps {
   ownedAltLabel: string;
   fallbackBadgeLabel: string;
   noImageAltLabel: string;
+  onClick?: () => void;
 }
 
 export default function CardThumbnail({
@@ -23,6 +22,7 @@ export default function CardThumbnail({
   ownedAltLabel,
   fallbackBadgeLabel,
   noImageAltLabel,
+  onClick,
 }: CardThumbnailProps) {
   const [imgError, setImgError] = useState(false);
 
@@ -40,12 +40,14 @@ export default function CardThumbnail({
     : `${displayName} - ${card.setName} - ${rarityLabel}`;
 
   return (
-    // ponytail: disabled button — Fase C adds the action
     <button
       type="button"
-      disabled
+      onClick={onClick}
       aria-label={altText}
-      className="relative group w-full text-left rounded-lg overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 disabled:cursor-default"
+      className={[
+        "relative group w-full text-left rounded-lg overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950",
+        onClick ? "cursor-pointer" : "cursor-default",
+      ].join(" ")}
     >
       {/* Card image container — aspect 5:7 (63mm × 88mm physical TCG ratio) */}
       <div className="relative aspect-[5/7] w-full rounded-lg overflow-hidden bg-zinc-800">

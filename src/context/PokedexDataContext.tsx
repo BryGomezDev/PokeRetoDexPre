@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   collection,
   doc,
@@ -18,6 +18,7 @@ import { useLanguage } from "./LanguageContext";
 import type { FormType, PokemonDoc, PokemonWithStatus, UserProfile, Variant, CardLanguage } from "@/hooks/usePokedexData";
 import { toDisplayState } from "@/hooks/usePokedexData";
 import { POKEMON_DATA_VERSION } from "@/lib/constants";
+import { applyCardEntry, type CardEntry } from "@/lib/cards";
 
 // Key changes with POKEMON_DATA_VERSION, automatically invalidating stale caches
 // when the /pokemon population script is re-run with new data.
@@ -45,6 +46,7 @@ interface PokedexDataContextValue {
     quantity: number
   ) => Promise<void>;
   updateFavorite: (slug: string, value: boolean) => Promise<void>;
+  updateCardEntry: (slug: string, cardId: string, entry: CardEntry | null) => void;
 }
 
 const PokedexDataContext = createContext<PokedexDataContextValue>({
@@ -56,6 +58,7 @@ const PokedexDataContext = createContext<PokedexDataContextValue>({
   updateSpecialFlag: async () => {},
   updateBulkStatus: async () => {},
   updateFavorite: async () => {},
+  updateCardEntry: () => {},
 });
 
 export function PokedexDataProvider({ children }: { children: React.ReactNode }) {
@@ -67,6 +70,15 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Refs for updateCardEntry debounce + rollback
+  const pokemonRef = useRef<PokemonWithStatus[]>([]);
+  const cardTimerRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const cardRollbackRef = useRef<Map<string, Record<string, CardEntry>>>(new Map());
+  const pendingCardsRef = useRef<Map<string, Record<string, CardEntry>>>(new Map());
+
+  // Keep pokemonRef in sync with state (no render side-effect)
+  useEffect(() => { pokemonRef.current = pokemon; }, [pokemon]);
 
   useEffect(() => {
     if (!uid) {
@@ -295,8 +307,77 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
     [uid]
   );
 
+  const updateCardEntry = useCallback(
+    (slug: string, cardId: string, entry: CardEntry | null) => {
+      if (!uid) return;
+
+      // Base state: pending ref has priority over react state (handles rapid-fire clicks)
+      const baseCards =
+        pendingCardsRef.current.get(slug) ??
+        pokemonRef.current.find((p) => p.slug === slug)?.cards ??
+        {};
+
+      // Save rollback only at the start of the debounce window
+      if (!cardTimerRef.current.has(slug)) {
+        cardRollbackRef.current.set(slug, { ...baseCards });
+      }
+
+      const newCards = applyCardEntry(baseCards, cardId, entry);
+
+      // Update pending state synchronously (for the next rapid click)
+      pendingCardsRef.current.set(slug, newCards);
+
+      // Optimistic UI update
+      setPokemon((prev) =>
+        prev.map((p) =>
+          p.slug === slug
+            ? { ...p, cards: newCards, hasCatalogCards: Object.keys(newCards).length > 0 }
+            : p
+        )
+      );
+
+      // Debounce Firestore write 500ms
+      const existing = cardTimerRef.current.get(slug);
+      if (existing) clearTimeout(existing);
+
+      const timer = setTimeout(async () => {
+        const cardsToWrite = pendingCardsRef.current.get(slug);
+        const rollback = cardRollbackRef.current.get(slug);
+        cardTimerRef.current.delete(slug);
+        pendingCardsRef.current.delete(slug);
+        cardRollbackRef.current.delete(slug);
+
+        if (!cardsToWrite || !uid) return;
+
+        try {
+          await setDoc(
+            doc(db, "users", uid, "collection", slug),
+            { cards: cardsToWrite, updated_at: serverTimestamp() },
+            { merge: true }
+          );
+        } catch (err) {
+          console.error("[updateCardEntry]", err);
+          if (rollback !== undefined) {
+            setPokemon((prev) =>
+              prev.map((p) =>
+                p.slug === slug
+                  ? { ...p, cards: rollback, hasCatalogCards: Object.keys(rollback).length > 0 }
+                  : p
+              )
+            );
+          }
+          setError("No se pudo guardar la carta. Comprueba tu conexión.");
+          setTimeout(() => setError(null), 4000);
+        }
+      }, 500);
+
+      cardTimerRef.current.set(slug, timer);
+    },
+    [uid]
+  );
+
   return (
-    <PokedexDataContext.Provider value={{ pokemon, userProfile, loading, error, updatePokemonStatus, updateSpecialFlag, updateBulkStatus, updateFavorite }}>
+    <PokedexDataContext.Provider value={{ pokemon, userProfile, loading, error, updatePokemonStatus, updateSpecialFlag, updateBulkStatus, updateFavorite, updateCardEntry }}>
       {children}
     </PokedexDataContext.Provider>
   );

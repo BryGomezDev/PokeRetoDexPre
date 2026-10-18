@@ -8,7 +8,8 @@ import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mergeCards, filterCards } from "../src/lib/cards.ts";
+import { mergeCards, filterCards, applyCardEntry } from "../src/lib/cards.ts";
+import type { CardEntry } from "../src/lib/cards.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const catalogPath = resolve(__dirname, "../public/catalog/v1/25.json");
@@ -39,6 +40,32 @@ assert.strictEqual(missingWhenNone.length, mergedCards.length, "sin cartas: miss
 const fakeOwned = (id: string) => id === "fake-id-not-in-catalog";
 const ownedWithFakeId = filterCards(mergedCards, fakeOwned, "owned", "", "");
 assert.strictEqual(ownedWithFakeId.length, 0, "ID desconocido no debe aparecer como owned");
+
+// ─── C: applyCardEntry ────────────────────────────────────────────────────────
+const emptyCards: Record<string, CardEntry> = {};
+
+// C1: añadir carta (ID sin punto)
+const after1 = applyCardEntry(emptyCards, "base1-4", { copies: 1, language: null });
+assert.strictEqual(after1["base1-4"]?.copies, 1, "C1: añadir carta — copies debe ser 1");
+
+// C2: aumentar copias
+const after2 = applyCardEntry(after1, "base1-4", { copies: 3, language: null });
+assert.strictEqual(after2["base1-4"]?.copies, 3, "C2: aumentar copias — copies debe ser 3");
+
+// C3: disminuir a 0 → eliminar entrada
+const after3 = applyCardEntry(after2, "base1-4", null);
+assert.strictEqual(Object.keys(after3).length, 0, "C3: eliminar entrada — mapa debe quedar vacío");
+
+// C4: ID con punto — clave se preserva exactamente
+const after4 = applyCardEntry({}, "sv03.5-001", { copies: 1, language: "es" });
+assert.ok("sv03.5-001" in after4, 'C4: ID con punto — clave "sv03.5-001" debe existir en el mapa');
+assert.strictEqual(after4["sv03.5-001"]?.language, "es", "C4: language debe ser es");
+
+// C5: cambiar idioma
+const after5 = applyCardEntry({ "base1-4": { copies: 2, language: null } }, "base1-4", { copies: 2, language: "en" });
+assert.strictEqual(after5["base1-4"]?.language, "en", "C5: cambiar idioma — debe ser en");
+
+console.log("✓ applyCardEntry: añadir, aumentar, eliminar, ID con punto, cambiar idioma");
 
 // ─── Output ──────────────────────────────────────────────────────────────────
 console.log(`✓ owned: ${filteredOwned.length}/5`);

@@ -1,12 +1,13 @@
 "use client";
 
-import { Suspense, useState, useEffect, useMemo } from "react";
+import { Suspense, useState, useEffect, useRef, useMemo } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { notFound } from "next/navigation";
 import { usePokedexContext } from "@/context/PokedexDataContext";
 import { useLanguage } from "@/context/LanguageContext";
 import CardThumbnail from "@/components/CardThumbnail";
+import CardDetailModal from "@/components/CardDetailModal";
 import { mergeCards, filterCards, type CatalogCard, type MergedCard } from "@/lib/cards";
 
 // ─── types ──────────────────────────────────────────────────────────────────
@@ -48,7 +49,7 @@ function CardsContent({ params }: { params: { dexId: string } }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { pokemon, loading: ctxLoading } = usePokedexContext();
+  const { pokemon, loading: ctxLoading, updateCardEntry } = usePokedexContext();
   const { language, t } = useLanguage();
 
   // dexId validation
@@ -63,6 +64,9 @@ function CardsContent({ params }: { params: { dexId: string } }) {
         : null,
     [pokemon, dexId, validDexId]
   );
+
+  // Modal state
+  const [selectedCard, setSelectedCard] = useState<MergedCard | null>(null);
 
   // Catalog fetch state — retryCount lets the user retry without changing dexId
   const [retryCount, setRetryCount] = useState(0);
@@ -111,10 +115,17 @@ function CardsContent({ params }: { params: { dexId: string } }) {
   // Display language: URL param > app language
   const displayLang = (searchParams.get("lang") as "en" | "es" | null) ?? language;
 
+  // Ref to avoid race condition when setParam is called in rapid succession
+  const pendingParamsRef = useRef(new URLSearchParams(searchParams.toString()));
+  useEffect(() => {
+    pendingParamsRef.current = new URLSearchParams(searchParams.toString());
+  }, [searchParams]);
+
   function setParam(key: string, value: string) {
-    const next = new URLSearchParams(searchParams.toString());
+    const next = new URLSearchParams(pendingParamsRef.current.toString());
     if (value) next.set(key, value);
     else next.delete(key);
+    pendingParamsRef.current = next;
     router.replace(`${pathname}?${next.toString()}`, { scroll: false });
   }
 
@@ -351,6 +362,7 @@ function CardsContent({ params }: { params: { dexId: string } }) {
                     ownedAltLabel={t("cards.ownedAlt")}
                     fallbackBadgeLabel={t("cards.fallbackLangBadge")}
                     noImageAltLabel={t("cards.noImageAlt")}
+                    onClick={() => setSelectedCard(card)}
                   />
                 </div>
               );
@@ -358,6 +370,17 @@ function CardsContent({ params }: { params: { dexId: string } }) {
           </div>
         )}
       </main>
+
+      {selectedCard && poke && (
+        <CardDetailModal
+          card={selectedCard}
+          poke={poke}
+          displayLang={displayLang}
+          rarityLabel={labelForRarity(selectedCard.rarity, displayLang)}
+          onClose={() => setSelectedCard(null)}
+          onUpdateEntry={(cardId, entry) => updateCardEntry(poke.slug, cardId, entry)}
+        />
+      )}
     </div>
   );
 }

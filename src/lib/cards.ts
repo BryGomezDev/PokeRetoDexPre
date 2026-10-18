@@ -40,3 +40,22 @@ export function filterCards(
     return true;
   });
 }
+
+export interface CardEntry {
+  copies: number;
+  language: "es" | "en" | "zh" | "ko" | "ja" | "otros" | null;
+}
+
+export function applyCardEntry(
+  cards: Record<string, CardEntry>,
+  cardId: string,
+  entry: CardEntry | null
+): Record<string, CardEntry> {
+  const next = { ...cards };
+  if (entry === null) {
+    delete next[cardId];
+  } else {
+    next[cardId] = entry;
+  }
+  return next;
+}
