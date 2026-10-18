@@ -26,8 +26,9 @@ export default function CardThumbnail({
 }: CardThumbnailProps) {
   const [imgError, setImgError] = useState(false);
 
-  const showPlaceholder = !card.image || imgError;
-  const imgSrc = card.image ? `${card.image}/low.webp` : "";
+  const effectiveImage = card.image || card.imageEs || null;
+  const showPlaceholder = !effectiveImage || imgError;
+  const imgSrc = effectiveImage ? `${effectiveImage}/low.webp` : "";
 
   const displayName = displayLang === "es" && card.hasEs && card.nameEs
     ? card.nameEs
@@ -52,16 +53,15 @@ export default function CardThumbnail({
       {/* Card image container — aspect 5:7 (63mm × 88mm physical TCG ratio) */}
       <div className="relative aspect-[5/7] w-full rounded-lg overflow-hidden bg-zinc-800">
         {showPlaceholder ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 p-2">
-            <span className="text-zinc-500 text-xs font-medium leading-tight text-center line-clamp-2">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 p-2 border border-dashed border-zinc-700 rounded-lg">
+            <span className="text-zinc-600 text-lg leading-none" aria-hidden="true">⊘</span>
+            <span className="text-zinc-500 text-[10px] font-medium leading-tight text-center line-clamp-2">
               {card.setName}
             </span>
-            <span className="text-zinc-600 text-[10px] leading-tight text-center">
+            <span className="text-zinc-600 text-[9px] leading-tight text-center">
               {rarityLabel}
             </span>
-            {!card.image && (
-              <span className="sr-only">{noImageAltLabel}</span>
-            )}
+            <span className="sr-only">{noImageAltLabel}</span>
           </div>
         ) : (
           // eslint-disable-next-line @next/next/no-img-element

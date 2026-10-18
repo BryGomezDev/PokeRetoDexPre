@@ -14,13 +14,19 @@ export interface CatalogCard {
 export interface MergedCard extends CatalogCard {
   nameEs: string | null;
   hasEs: boolean;
+  imageEs: string | null;
 }
 
 export function mergeCards(data: { en: CatalogCard[]; es: CatalogCard[] }): MergedCard[] {
   const esMap = new Map(data.es.map((c) => [c.id, c]));
   return data.en.map((c) => {
     const esCard = esMap.get(c.id);
-    return { ...c, nameEs: esCard?.name ?? null, hasEs: !!esCard };
+    return {
+      ...c,
+      nameEs: esCard?.name ?? null,
+      hasEs: !!esCard,
+      imageEs: esCard?.image || null,
+    };
   });
 }
 

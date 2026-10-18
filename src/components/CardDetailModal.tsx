@@ -85,8 +85,9 @@ export default function CardDetailModal({
   const displayName =
     displayLang === "es" && card.hasEs && card.nameEs ? card.nameEs : card.name;
 
-  const showPlaceholder = !card.image || imgError;
-  const imgSrc = card.image ? `${card.image}/high.webp` : "";
+  const effectiveImage = card.image || card.imageEs || null;
+  const showPlaceholder = !effectiveImage || imgError;
+  const imgSrc = effectiveImage ? `${effectiveImage}/high.webp` : "";
 
   const LANG_OPTIONS: { value: CardLanguage; label: string }[] = [
     { value: "es", label: t("cards.langEs") },
@@ -151,11 +152,12 @@ export default function CardDetailModal({
           <div className="relative aspect-[5/7] max-h-56 w-auto rounded-lg overflow-hidden bg-zinc-800 flex items-center justify-center"
             style={{ height: "14rem", width: "10rem" }}>
             {showPlaceholder ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 p-2">
-                <span className="text-zinc-500 text-xs font-medium leading-tight text-center line-clamp-2">
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-2 border border-dashed border-zinc-700 rounded-lg">
+                <span className="text-zinc-500 text-2xl leading-none" aria-hidden="true">⊘</span>
+                <span className="text-zinc-400 text-xs font-medium leading-tight text-center line-clamp-2">
                   {card.setName}
                 </span>
-                <span className="text-zinc-600 text-[10px] leading-tight text-center">
+                <span className="text-zinc-500 text-[10px] leading-tight text-center">
                   {rarityLabel}
                 </span>
               </div>
