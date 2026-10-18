@@ -831,12 +831,25 @@ Actualmente `is_bulk` y `bulk_quantity` son campos raíz del documento de colecc
 
 ---
 
-## Sección 10 — Estado de Fase B
+## Sección 10 — Estado de implementación por fases
+
+### Estado global de fases
+
+| Fase | Estado | Fecha de cierre |
+|---|---|---|
+| A — Panel con siluetas, favoritos y ruta shell | ✅ Completa | — |
+| B — Pantalla de cartas y filtros | ✅ Completa | 2026-10-17 |
+| C — Detalle de carta, marcado y copias | ✅ Completa | 2026-10-18 |
+| D — Verificación de convivencia y cierre | Pendiente | — |
+
+---
+
+## Sección 10.A — Estado de Fase B (archivo)
 
 **Fecha de cierre:** 2026-10-17
 **Rama:** `feat/ui-selector-fase-b`
 
-### 10.1 Entregables completados
+### 10.A.1 Entregables completados
 
 | Archivo | Tipo de cambio |
 |---|---|
@@ -845,7 +858,7 @@ Actualmente `is_bulk` y `bulk_quantity` son campos raíz del documento de colecc
 | `src/lib/rarities.ts` | Nuevo — mapping estático de 32 rarezas desde `rarities.json` [Dato] |
 | `src/lib/i18n/es.ts` y `en.ts` | Claves nuevas bajo el namespace `cards` [Dato] |
 
-### 10.2 Hallazgos verificados sobre el catálogo
+### 10.A.2 Hallazgos verificados sobre el catálogo
 
 | Hallazgo | Tipo |
 |---|---|
@@ -857,19 +870,19 @@ Actualmente `is_bulk` y `bulk_quantity` son campos raíz del documento de colecc
 | Pikachu (dexId 25): 232 cartas EN, 141 cartas ES | [Dato] |
 | Ningún Pokémon tiene 0 cartas EN en los 1025 archivos del catálogo | [Dato] |
 
-### 10.3 Formas en el catálogo — aclaración de diseño
+### 10.A.3 Formas en el catálogo — aclaración de diseño
 
 El catálogo (`{dexId}.json`) no tiene campo de forma. Todas las cartas de un `dexId` aparecen mezcladas en un único array `en`. Las distinciones de forma (Mega, GX, VMAX, etc.) existen solo en el string `name` de la carta (p. ej. "Charizard-GX", "Charizard VMAX"). No hay campo `formType` estructurado. El catálogo modela ediciones de impresión TCG, no formas de especie Pokémon — no es posible agrupar por forma a partir de los datos del catálogo sin parsear el nombre. [Dato]
 
-### 10.4 Orden de las cartas
+### 10.A.4 Orden de las cartas
 
 No existe campo de fecha de lanzamiento en las entradas del catálogo. El orden de presentación en Fase B es el orden del array JSON tal como lo produce el script ETL (aproximadamente por `setId` dentro del historial de cada Pokémon). [Dato]
 
-### 10.5 Rendimiento
+### 10.A.5 Rendimiento
 
 232 cartas EN (Pikachu, caso más grande) con CSS grid y `loading="lazy"` nativo en `<img>` no presentan problema de render medible. No se requiere virtualización para Fase B. [Dato]
 
-### 10.6 Decisiones tomadas en Fase B
+### 10.A.6 Decisiones tomadas en Fase B
 
 | Decisión | Resolución |
 |---|---|
@@ -878,12 +891,75 @@ No existe campo de fecha de lanzamiento en las entradas del catálogo. El orden 
 | Retry ante error de carga | `retryCount` en estado local dispara re-ejecución del `useEffect` — sin recarga de página [Dato] |
 | `clearFilters()` | Llama a `router.replace(pathname)` para eliminar todos los `searchParams` de una vez [Dato] |
 
-### 10.7 Correcciones de accesibilidad aplicadas
+### 10.A.7 Correcciones de accesibilidad aplicadas
 
 - Estado "poseída" añadido al `aria-label` de cada carta (antes era silencioso para lectores de pantalla) [Dato]
 - `aria-hidden` en el badge visual de checkmark (evita doble anuncio) [Dato]
 - `aria-disabled` redundante eliminado (el atributo nativo `disabled` es suficiente) [Dato]
 
-### 10.8 Pendiente para Fase C
+---
 
-La Fase B no implementa el marcado de cartas individuales ni el modal de detalle de carta (`CardDetailModal`). Esos entregables corresponden a la Fase C tal como se describe en la Sección 8.4. Las advertencias sobre `deleteField()` en mapas anidados con `card_id` que contienen puntos (Riesgo R2) siguen pendientes de verificación en el emulador.
+## Sección 10.B — Estado de Fase C
+
+**Fecha de cierre:** 2026-10-18
+**Rama:** `feat/ui-selector-fase-b`
+
+### 10.B.1 Entregables completados
+
+| Archivo | Tipo de cambio |
+|---|---|
+| `src/lib/cards.ts` | Añadida interfaz `CardEntry` (fuente de verdad del tipo) y función `applyCardEntry(cards, cardId, entry\|null)` [Dato] |
+| `src/hooks/usePokedexData.ts` | Re-exporta `CardEntry` desde `@/lib/cards`; añadidos campos `cards` y `hasCatalogCards` a `PokemonWithStatus`; `toDisplayState` actualizada para poblarlos [Dato] |
+| `src/context/PokedexDataContext.tsx` | Añadida función `updateCardEntry(slug, cardId, entry\|null): void` con optimistic UI, debounce de 500 ms por slug y rollback en error de escritura [Dato] |
+| `src/components/CardDetailModal.tsx` | Nuevo componente — bottom sheet en móvil / modal centrado en escritorio; imagen `{card.image}/high.webp`; control de copias +/−; selector de idioma ES/EN/Otro; cierre con Esc, clic en backdrop y botón ×; accesibilidad ARIA [Dato] |
+| `src/components/CardThumbnail.tsx` | Prop `onClick?` añadida; eliminada prop `disabled`; eliminado dead re-export de `CatalogCard`/`MergedCard` [Dato] |
+| `src/app/(protected)/pokedex/[dexId]/page.tsx` | Integrado `CardDetailModal`; corregida race condition en `setParam` con `pendingParamsRef` [Dato] |
+| `src/lib/i18n/es.ts` y `en.ts` | 10 claves nuevas bajo `cards.*`: `decreaseCopies`, `increaseCopies`, `noCopies`, `languageLabel`, `langEs`, `langEn`, `langOther`, `close`, `copiesLabel`, `saveError` [Dato] |
+| `scripts/test-card-filter.ts` | Casos C1–C5 para `applyCardEntry` (añadir, aumentar copias, eliminar, ID con punto, cambiar idioma) [Dato] |
+| `firestore.rules` | Helper `validCardEntry(entry)` añadido; restricción `cards.size() <= 200` añadida a `validCollectionDoc` [Dato] |
+
+### 10.B.2 Decisiones técnicas tomadas en Fase C
+
+| Decisión | Resolución | Justificación |
+|---|---|---|
+| Estrategia de escritura a Firestore para `cards` | `setDoc({ cards: mapaCompleto, updated_at: serverTimestamp() }, { merge: true })` — se descartaron `updateDoc` con notación de string y `FieldPath` | `setDoc merge:true` sobre un campo de primer nivel reemplaza el campo entero (no hace merge recursivo dentro del mapa). Leer el mapa en memoria, mutar con `applyCardEntry` y escribir el mapa completo resuelve correctamente los tres casos (añadir, actualizar, eliminar) sin necesitar el emulador [Dato] |
+| Claves con punto en `card_id` (ej. `"sv03.5-001"`) | Resuelto automáticamente por el enfoque de mapa completo. El test C4 confirma que la clave se preserva sin tratamiento especial | La notación de string `` `cards.${cardId}` `` interpreta los puntos como separadores de ruta en Firestore (`updateDoc`). Al escribir el mapa completo con `setDoc`, las claves son tratadas como strings literales del mapa JS, sin riesgo de misinterpretación [Dato] |
+| Debounce de escritura | 500 ms por slug (frente a 1000 ms en el stepper de bulk existente) | Las interacciones de +/− en el stepper de copias son típicamente más rápidas que las del bulk; 500 ms ofrece un balance adecuado entre responsividad y agrupación de escrituras [Estimación] |
+| Idiomas disponibles en `CardDetailModal` | Solo ES, EN, Otros (3 opciones) — no se exponen ZH, KO, JA | El catálogo solo distingue EN y ES; los idiomas adicionales del esquema (ZH, KO, JA) no tienen datos de catálogo que los respalden en esta pantalla. Se pueden añadir en una iteración futura si el usuario los necesita [Dato] |
+| Iteración de claves dinámicas en Firestore Rules | No implementada — el DSL de Rules no tiene primitivas de iteración sobre mapas con claves dinámicas | `validCardEntry` queda como helper preparado para futuros paths con clave conocida. La validación de todas las entradas del mapa `cards` se delega al cliente [Dato] |
+
+### 10.B.3 Comportamiento de `updateCardEntry`
+
+La función, expuesta por `PokedexDataContext`, sigue este flujo para cada llamada:
+
+1. Lee el estado base desde `pendingCardsRef` (tiene prioridad sobre el estado React para manejar clics rápidos consecutivos) o desde `pokemonRef`.
+2. Guarda el estado original en `cardRollbackRef` solo al inicio de la ventana de debounce (no en cada clic).
+3. Llama a `applyCardEntry(base, cardId, entry)` — si `entry === null`, elimina la clave; si no, la añade o actualiza.
+4. Aplica el resultado como optimistic UI (`setPokemon`).
+5. Resetea el timer de debounce (500 ms). Al dispararse, escribe el mapa completo con `setDoc merge:true`.
+6. En caso de error de escritura, restaura el estado desde `cardRollbackRef` y muestra un error transitorio de 4 segundos.
+
+### 10.B.4 Contrato de riesgo R2 — resuelto
+
+El riesgo R2 de la Sección 8.6 (claves con punto en `card_id` + `deleteField()` en mapas anidados) queda cerrado. No se usa `deleteField()` ni `FieldPath`. El enfoque de mapa completo elimina la clase de problema en su raíz.
+
+### 10.B.5 Riesgos pendientes para Fase D
+
+| Riesgo | Estado | Notas |
+|---|---|---|
+| R1 — Caché del catálogo sin `Cache-Control: immutable` | Pendiente | Sin cambios en Fase C. Ver Sección 8.6 y 5.3 para la mitigación recomendada |
+| R2 — `deleteField()` + `card_id` con puntos | ✅ Resuelto en Fase C | Ver 10.B.2 y 10.B.3 |
+| R3 — Tamaño de documento en Pokémon populares | Sin riesgo práctico | Análisis en Sección 3.4 sigue vigente |
+| R4 — `PokemonModal` no limpia `cards` al desmarcar `owned` | Pendiente | `PokemonModal.tsx` no se modificó en Fase C. Si el usuario desmarca `owned` desde ese modal, `cards` no se vacía. `toDisplayState` devolverá `owned: true` porque `hasCatalogCards` sigue siendo verdadero. Corrección planificada para Fase D |
+| R5 — Compatibilidad de ruta dinámica `[dexId]` en `(protected)` | ✅ Resuelto en Fase A | Sin incidencias en Fases B y C |
+| R6 — CSP en entorno de desarrollo | Pendiente | Sin cambios. Verificar en `npm run build && npm run start` o Preview de Vercel antes del deploy |
+| R7 — `Cache-Control: immutable` para el catálogo | Pendiente | Ver Sección 5.3 |
+| R8 — Contraste de la silueta (WCAG AA) | Pendiente | Sin cambios desde Fase A |
+
+### 10.B.6 Pendiente para Fase D
+
+- Corrección en `PokemonModal.tsx`: cuando `owned === false`, limpiar `cards: {}` en la escritura de `updatePokemonStatus` (cierre del riesgo R4).
+- Corrección en `dashboard/page.tsx`: actualizar el contador "Colección Total" para usar el campo `owned` derivado de `toDisplayState` (incluye Pokémon cuyo `owned` proviene únicamente de `hasCatalogCards`).
+- Verificación de filtros de ownership en `pokedex/page.tsx`: confirmar que el filtro "Tengo" usa `p.owned` (ya derivado correctamente por `toDisplayState`; verificación manual pendiente).
+- Bump de versión: `APP_VERSION` → `1.2.0` en `src/lib/constants.ts`.
+- Verificación de los tres estados de documento (A: solo `variant`, B: solo `cards`, C: ambos) en un entorno real con datos de usuario existentes.
