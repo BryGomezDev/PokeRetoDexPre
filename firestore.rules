@@ -25,8 +25,9 @@ service cloud.firestore {
 
       match /collection/{pokemonSlug} {
         allow read: if request.auth != null && request.auth.uid == uid;
-        allow write: if request.auth != null && request.auth.uid == uid
+        allow create, update: if request.auth != null && request.auth.uid == uid
           && validCollectionDoc(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == uid;
       }
 
       match /config/rules {
