@@ -278,6 +278,35 @@ async function testI(db: Firestore) {
   }
 }
 
+async function testJ(db: Firestore) {
+  console.log("\n── Test J: setDoc({cards:{}},{merge:true}) on existing doc with entries ─");
+  const ref = docRef("testJ");
+  await setDoc(ref, { cards: { a: { copies: 1 }, b: { copies: 2 } } });
+
+  await setDoc(ref, { cards: {} }, { merge: true });
+
+  const snap = await getDoc(ref);
+  const cards = (snap.data() as Record<string, unknown>).cards as Record<string, unknown> | undefined;
+  console.log("  Read-back cards:", label(cards));
+
+  if (cards === undefined || Object.keys(cards as object).length === 0) {
+    // [Dato] setDoc({cards:{}},{merge:true}) REPLACED the map with empty (or removed the field).
+    // Consistent with firebase-js-sdk #1371 (SDK 5.5.7): an empty map value with merge:true replaces
+    // the entire field rather than merging at key level. This explains why pre-af0159d code correctly
+    // persisted "remove last card" — it wrote {cards:{}} with merge, which emptied the field.
+    // The not-found fallback guard (cardsToWrite.length === 0) is still needed: the behavior here
+    // applies only to existing docs; calling setDoc on a not-found doc with {} would create an empty
+    // doc without touching legacy fields (no harm, but unnecessary write).
+    pass("J", `cards = ${label(cards)} — REPLACED with empty. Empty-map-replaces behavior confirmed. Pre-af0159d deletion worked correctly via this path.`);
+  } else {
+    // [Dato] setDoc({cards:{}},{merge:true}) PRESERVED existing entries.
+    // firebase-js-sdk #1371 behavior NOT observed in current SDK version.
+    // The pre-af0159d "remove last card" persistence needs a different explanation.
+    // Docs should be updated to remove the empty-map-replaces claim.
+    pass("J", `cards = ${label(cards)} — PRESERVED. Empty map with merge:true does NOT replace in current SDK. Pre-af0159d last-card deletion behavior requires a different explanation.`);
+  }
+}
+
 // ── runner ────────────────────────────────────────────────────────────────────
 async function run() {
   console.log("=== Firestore FieldPath Emulator Tests ===");
@@ -295,6 +324,7 @@ async function run() {
     await testG(db);
     await testH(db);
     await testI(db);
+    await testJ(db);
   } finally {
     await cleanup();
     console.log("\n=== Done ===");

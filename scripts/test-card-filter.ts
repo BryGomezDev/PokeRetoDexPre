@@ -73,7 +73,12 @@ assert.strictEqual(after6["base1-4"]?.language, "otros", 'C6: language "otros" s
 const after7 = applyCardEntry({ "sv03.5-001": { copies: 1, language: "en" } }, "sv03.5-001", null);
 assert.strictEqual(Object.keys(after7).length, 0, "C7: eliminar ID con punto — mapa debe quedar vacío");
 
-console.log('✓ applyCardEntry: añadir, aumentar, eliminar, ID con punto, cambiar idioma, "otros", eliminar con punto');
+// C8: eliminar última carta → mapa vacío (guarda del fallback not-found)
+// applyCardEntry es pura: si devuelve {}, el caller debe omitir el setDoc fallback.
+const after8 = applyCardEntry({ "only-card": { copies: 1, language: null } }, "only-card", null);
+assert.strictEqual(Object.keys(after8).length, 0, "C8: eliminar última carta → mapa vacío — setDoc fallback debe omitirse");
+
+console.log('✓ applyCardEntry: añadir, aumentar, eliminar, ID con punto, cambiar idioma, "otros", eliminar con punto, guarda mapa vacío');
 
 // ─── D: deriveOwned — lógica de propiedad derivada desde el mapa de cartas ───
 // Replica la fórmula del optimistic update en PokedexDataContext.updateCardEntry.
