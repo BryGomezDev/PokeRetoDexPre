@@ -916,14 +916,15 @@ No existe campo de fecha de lanzamiento en las entradas del catálogo. El orden 
 | `src/app/(protected)/pokedex/[dexId]/page.tsx` | Integrado `CardDetailModal`; corregida race condition en `setParam` con `pendingParamsRef` [Dato] |
 | `src/lib/i18n/es.ts` y `en.ts` | 10 claves nuevas bajo `cards.*`: `decreaseCopies`, `increaseCopies`, `noCopies`, `languageLabel`, `langEs`, `langEn`, `langOther`, `close`, `copiesLabel`, `saveError` [Dato] |
 | `scripts/test-card-filter.ts` | Casos C1–C5 para `applyCardEntry` (añadir, aumentar copias, eliminar, ID con punto, cambiar idioma) [Dato] |
-| `firestore.rules` | Helper `validCardEntry(entry)` añadido; restricción `cards.size() <= 200` añadida a `validCollectionDoc` [Dato] |
+| `scripts/test-fieldpath.ts` | Tests A–I en emulador local (`PROJECT_ID="demo-test"`): comportamiento de `FieldPath` vs `setDoc(merge:true)` para claves con punto, seguridad de claves hermanas, `deleteField()`, y fallback not-found. Todos PASS tras corregir la aserción del Test D en commit `7293f27` [Dato] |
+| `firestore.rules` | `validCollectionDoc()` actualizada: cap de `cards.size() <= 500` (subido de 200 en commit `5067ef9`); helper `validCardEntry` eliminado como código muerto en commit `7ee6ff0` [Dato] |
 
 ### 10.B.2 Decisiones técnicas tomadas en Fase C
 
 | Decisión | Resolución | Justificación |
 |---|---|---|
-| Estrategia de escritura a Firestore para `cards` | `setDoc({ cards: mapaCompleto, updated_at: serverTimestamp() }, { merge: true })` — se descartaron `updateDoc` con notación de string y `FieldPath` | `setDoc merge:true` sobre un campo de primer nivel reemplaza el campo entero (no hace merge recursivo dentro del mapa). Leer el mapa en memoria, mutar con `applyCardEntry` y escribir el mapa completo resuelve correctamente los tres casos (añadir, actualizar, eliminar) sin necesitar el emulador [Dato] |
-| Claves con punto en `card_id` (ej. `"sv03.5-001"`) | Resuelto automáticamente por el enfoque de mapa completo. El test C4 confirma que la clave se preserva sin tratamiento especial | La notación de string `` `cards.${cardId}` `` interpreta los puntos como separadores de ruta en Firestore (`updateDoc`). Al escribir el mapa completo con `setDoc`, las claves son tratadas como strings literales del mapa JS, sin riesgo de misinterpretación [Dato] |
+| Estrategia de escritura a Firestore para `cards` | `updateDoc(ref, new FieldPath("cards", cardId), entry)` para añadir/actualizar; `updateDoc(ref, new FieldPath("cards", cardId), deleteField())` para eliminar; `setDoc({cards: cardsToWrite, updated_at: serverTimestamp()}, {merge:true})` como fallback not-found | El emulador (Test D) confirmó que `setDoc(merge:true)` **preserva** las claves hermanas del mapa — un write parcial no borra las entradas ausentes. Consecuencia: el enfoque de mapa completo via `setDoc merge:true` no puede usarse para eliminar claves; las cartas borradas sobrevivían al reload. La solución quirúrgica es `FieldPath + deleteField()` por clave. El fallback not-found usa `setDoc(merge:true)` para crear el documento con el mapa completo sin sobrescribir campos legacy (`owned`, `variant`, etc.) si el documento ya existía [Dato — commit `af0159d`, Test D] |
+| Claves con punto en `card_id` (ej. `"sv03.5-001"`) | Resuelto por `FieldPath` con segmentos separados: `new FieldPath("cards", "sv03.5-001")` | La notación de string `` `cards.${cardId}` `` en `updateDoc` interpreta el punto como separador de ruta, apuntando a la ruta `cards → sv03 → 5-001`. `FieldPath(seg1, seg2)` trata `cardId` como literal. Test A y Test I del emulador confirman que el punto no se interpreta como separador [Dato — tests A, I en `scripts/test-fieldpath.ts`] |
 | Debounce de escritura | 500 ms por slug (frente a 1000 ms en el stepper de bulk existente) | Las interacciones de +/− en el stepper de copias son típicamente más rápidas que las del bulk; 500 ms ofrece un balance adecuado entre responsividad y agrupación de escrituras [Estimación] |
 | Idiomas disponibles en `CardDetailModal` | Solo ES, EN, Otros (3 opciones) — no se exponen ZH, KO, JA | El catálogo solo distingue EN y ES; los idiomas adicionales del esquema (ZH, KO, JA) no tienen datos de catálogo que los respalden en esta pantalla. Se pueden añadir en una iteración futura si el usuario los necesita [Dato] |
 | Iteración de claves dinámicas en Firestore Rules | No implementada — el DSL de Rules no tiene primitivas de iteración sobre mapas con claves dinámicas | `validCardEntry` queda como helper preparado para futuros paths con clave conocida. La validación de todas las entradas del mapa `cards` se delega al cliente [Dato] |
@@ -936,30 +937,76 @@ La función, expuesta por `PokedexDataContext`, sigue este flujo para cada llama
 2. Guarda el estado original en `cardRollbackRef` solo al inicio de la ventana de debounce (no en cada clic).
 3. Llama a `applyCardEntry(base, cardId, entry)` — si `entry === null`, elimina la clave; si no, la añade o actualiza.
 4. Aplica el resultado como optimistic UI (`setPokemon`).
-5. Resetea el timer de debounce (500 ms). Al dispararse, escribe el mapa completo con `setDoc merge:true`.
+5. Resetea el timer de debounce (500 ms). Al dispararse, construye `writeArgs`: las claves presentes en `cardsToWrite` generan `FieldPath("cards", id) + entry`; las claves presentes en `rollbackCards` pero ausentes en `cardsToWrite` generan `FieldPath("cards", id) + deleteField()`. Añade `"updated_at" + serverTimestamp()`. Llama a `updateDoc(ref, ...writeArgs)`. Si el documento no existe (`not-found`), cae a `setDoc({cards: cardsToWrite, updated_at: serverTimestamp()}, {merge:true})`.
 6. En caso de error de escritura, restaura el estado desde `cardRollbackRef` y muestra un error transitorio de 4 segundos.
 
 ### 10.B.4 Contrato de riesgo R2 — resuelto
 
-El riesgo R2 de la Sección 8.6 (claves con punto en `card_id` + `deleteField()` en mapas anidados) queda cerrado. No se usa `deleteField()` ni `FieldPath`. El enfoque de mapa completo elimina la clase de problema en su raíz.
+El riesgo R2 de la Sección 8.6 (claves con punto en `card_id` + `deleteField()` en mapas anidados) queda cerrado. La implementación usa `FieldPath` con segmentos separados (`new FieldPath("cards", cardId)`) para todas las escrituras por clave, lo que trata el punto en el `cardId` como literal en lugar de separador de ruta. `deleteField()` se usa para eliminar entradas individuales del mapa. El Test D del emulador descartó el enfoque de mapa completo con `setDoc(merge:true)`: al escribir solo las claves presentes en la actualización, las claves ausentes (las que se querían borrar) sobrevivían en Firestore [Dato — `scripts/test-fieldpath.ts`].
 
-### 10.B.5 Riesgos pendientes para Fase D
+### 10.B.5 Hallazgos adicionales de Fase C
+
+#### Badge de cartas (cartas distintas, no copias totales)
+
+El badge numérico en `PokemonCard.tsx` (línea 51) usa `Object.keys(pokemon.cards).length` — cuenta el número de **card IDs distintos** en el mapa, no la suma de `copies`. Un Pokémon con 3 Charizard Base + 1 Charizard Holo registra como **2 cartas**, no 4 [Dato — `PokemonCard.tsx:51`].
+
+#### Fallback a imagen ES (240 cartas)
+
+`MergedCard` expone el campo `imageEs: string | null` (imagen del lado ES del catálogo). `CardDetailModal.tsx:99` usa `card.image || card.imageEs` como imagen efectiva: si la entrada EN tiene `image: ""`, se cae al URL de la versión ES. Esto recupera **240 cartas** con imagen en ES pero sin imagen en EN (ej. Shining Legends). **1034 cartas** no tienen imagen en ningún idioma y muestran el placeholder `⊘` [Dato — commit `9c0aae6`, commit message].
+
+> ⚠️ El formato `high.webp` se usa como primera opción sin haber sido verificado sistemáticamente para todas las imágenes (ver riesgos). `onError` en la imagen fallback al placeholder, por lo que no hay crash, pero sí degradación visual silenciosa si `high.webp` no existe para algunas cartas.
+
+#### Cap `cards.size() <= 500` — justificación
+
+El cap de 500 entradas por documento se estableció como límite de seguridad en las Firestore Rules. **No es un dato medido**: el Pokémon con más cartas en el catálogo es Pikachu con 232 cartas EN (dexId 25) [Dato — 10.A.2]. El cap de 500 es el doble de ese máximo conocido, con margen para expansiones futuras [Estimación]. Un atacante podría enviar un mapa con 501 entradas manualmente; la regla lo bloquea antes de escritura.
+
+#### Limitación de las reglas de Firestore — sin validación de entradas del mapa
+
+El DSL de Firestore Rules no tiene primitivas de iteración sobre mapas con claves dinámicas. La función `validCollectionDoc` puede comprobar que `cards` es un mapa (`cards is map`) y que su tamaño es razonable (`cards.size() <= 500`), pero **no puede validar los valores de cada entrada** (ej. que `copies` sea un número positivo o que `language` sea uno de los valores permitidos). Esa validación se delega íntegramente al cliente [Dato — 10.B.2, DSL de reglas de Firestore].
+
+#### Correcciones de accesibilidad (WCAG 2.1 AA) — ratios medidos
+
+Commit `5fc38b9` (Accessibility Auditor, UX Architect):
+
+| Elemento | Antes | Después | Ratio antes | Ratio después | Norma |
+|---|---|---|---|---|---|
+| `rarityLabel` en `CardDetailModal` cabecera | `text-gray-500` | `text-gray-400` | 3.67:1 | 6.99:1 | WCAG 1.4.3 (AA ≥ 4.5:1) |
+| Placeholder `⊘` icono en `CardDetailModal` | `text-zinc-500` | `text-zinc-400` | — | — | decorativo; `aria-hidden` |
+| `setName` en placeholder `CardDetailModal` | `text-zinc-500` | `text-zinc-400` | — | — | texto informativo |
+| `rarityLabel` en placeholder `CardDetailModal` | `text-zinc-500` | `text-zinc-400` | — | — | texto informativo |
+| `setName` en placeholder `CardThumbnail` | `text-zinc-500` | `text-zinc-400` | 3.08:1 | 5.81:1 | WCAG 1.4.3 |
+| `rarityLabel` en `CardThumbnail` (placeholder y label) | `text-zinc-600` | `text-zinc-400` | 1.93:1 (**BLOCKER**) | 5.81:1 | WCAG 1.4.3 |
+
+Otros cambios de accesibilidad en el mismo commit:
+- **`aria-hidden` en overlay eliminado**: el overlay del `CardDetailModal` tenía `aria-hidden="true"`, lo que ocultaba el panel `role="dialog"` hijo a los lectores de pantalla. Se reemplazó por `role="presentation"` [Dato].
+- **Focus trap añadido** (WCAG 2.1.2): el handler de `keydown` en `CardDetailModal` atrapa Tab/Shift-Tab dentro del panel [Dato].
+- **`role="radio"`/`aria-checked` → `aria-pressed`**: los botones de idioma son toggles nullable, no un radio group — se corrigió el patrón ARIA [Dato].
+- **`role="radiogroup"` eliminado**: el `<div>` interior era redundante con `<fieldset>/<legend>` ya presentes [Dato].
+- **`HtmlLangSync` creado y revertido**: en el mismo commit se añadió un componente para sincronizar `document.documentElement.lang`; el commit siguiente (`f651ac9`) lo eliminó al detectar que `LanguageContext.tsx:52-55` ya contenía el mismo `useEffect` [Dato].
+
+---
+
+### 10.B.6 Riesgos pendientes para Fase D
 
 | Riesgo | Estado | Notas |
 |---|---|---|
 | R1 — Caché del catálogo sin `Cache-Control: immutable` | Pendiente | Sin cambios en Fase C. Ver Sección 8.6 y 5.3 para la mitigación recomendada |
-| R2 — `deleteField()` + `card_id` con puntos | ✅ Resuelto en Fase C | Ver 10.B.2 y 10.B.3 |
+| R2 — `deleteField()` + `card_id` con puntos | ✅ Resuelto en Fase C | Ver 10.B.4. Implementación usa `FieldPath` + `deleteField()` por clave |
 | R3 — Tamaño de documento en Pokémon populares | Sin riesgo práctico | Análisis en Sección 3.4 sigue vigente |
 | R4 — `PokemonModal` no limpia `cards` al desmarcar `owned` | Pendiente | `PokemonModal.tsx` no se modificó en Fase C. Si el usuario desmarca `owned` desde ese modal, `cards` no se vacía. `toDisplayState` devolverá `owned: true` porque `hasCatalogCards` sigue siendo verdadero. Corrección planificada para Fase D |
 | R5 — Compatibilidad de ruta dinámica `[dexId]` en `(protected)` | ✅ Resuelto en Fase A | Sin incidencias en Fases B y C |
 | R6 — CSP en entorno de desarrollo | Pendiente | Sin cambios. Verificar en `npm run build && npm run start` o Preview de Vercel antes del deploy |
 | R7 — `Cache-Control: immutable` para el catálogo | Pendiente | Ver Sección 5.3 |
 | R8 — Contraste de la silueta (WCAG AA) | Pendiente | Sin cambios desde Fase A |
+| R9 — `high.webp` sin verificación sistemática | **Pendiente** | `CardDetailModal` y `CardThumbnail` solicitan `{image}/high.webp`. Fase B verificó `high.jpg` con HEAD [Dato — 10.A.2], pero no `high.webp` ni los 240 URLs de fallback ES. Si `high.webp` no existe para alguna carta, `onError` muestra el placeholder silenciosamente. `scripts/check-images.ts` permite verificar una muestra de 30 cartas antes del deploy [Dato] |
+| R10 — Modal antiguo (`PokemonModal`) no retirado | Pendiente | El modal de Fase 5 sigue siendo el punto de entrada desde el grid (decisión D1/D4). No sabe del campo `cards` y no lo limpia al desmarcar `owned` (ver R4). La sustitución del flujo principal por `/pokedex/{dexId}` queda para Fase D |
+| R11 — Sin test automático de reglas Firestore | Pendiente | `firestore.rules` no tiene suite de tests automáticos (no hay `firebase emulators:exec` con fichero de rules tests). Única verificación: emulador manual de `test-fieldpath.ts`. Los tipos de las entradas del mapa `cards` no se validan en reglas (ver 10.B.5) |
 
-### 10.B.6 Pendiente para Fase D
+### 10.B.7 Pendiente para Fase D
 
 - Corrección en `PokemonModal.tsx`: cuando `owned === false`, limpiar `cards: {}` en la escritura de `updatePokemonStatus` (cierre del riesgo R4).
 - Corrección en `dashboard/page.tsx`: actualizar el contador "Colección Total" para usar el campo `owned` derivado de `toDisplayState` (incluye Pokémon cuyo `owned` proviene únicamente de `hasCatalogCards`).
 - Verificación de filtros de ownership en `pokedex/page.tsx`: confirmar que el filtro "Tengo" usa `p.owned` (ya derivado correctamente por `toDisplayState`; verificación manual pendiente).
 - Bump de versión: `APP_VERSION` → `1.2.0` en `src/lib/constants.ts`.
 - Verificación de los tres estados de documento (A: solo `variant`, B: solo `cards`, C: ambos) en un entorno real con datos de usuario existentes.
+- Decisión D1/D4: confirmar si el modal antiguo se retira o coexiste (cierre del riesgo R10).
