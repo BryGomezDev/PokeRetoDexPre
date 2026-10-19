@@ -966,7 +966,12 @@ Antes del commit `af0159d`, `updateCardEntry` construía el mapa completo y llam
 
 Según **firebase-js-sdk #1371** (comportamiento documentado en SDK 5.5.7): `setDoc(ref, {cards:{}}, {merge:true})` sobre un documento existente **sustituye el campo `cards` por un mapa vacío**, en lugar de hacer una merge a nivel de clave. Esto es diferente al comportamiento del Test D (donde `setDoc({cards:{id1:...}}, {merge:true})` preserva las claves ausentes): la diferencia está en que un mapa vacío `{}` actúa como reemplazo del campo, no como fusión selectiva.
 
-> **⚠️ Fuente:** firebase-js-sdk #1371, comportamiento del SDK 5.5.7. **No confirmado** en la versión actual del SDK. El Test J de `scripts/test-fieldpath.ts` verifica empíricamente si el comportamiento sigue igual en el emulador actual — Brayan ejecuta el test con `npx tsx scripts/test-fieldpath.ts`.
+> **Fuente:** firebase-js-sdk #1371, comportamiento del SDK 5.5.7. **Confirmado en emulador con Firestore SDK 12.16.0** (Test J, ejecutado por Brayan). No probado contra Firestore real (producción).
+
+Los Tests D y J explican conjuntamente el comportamiento completo del código pre-`af0159d`:
+
+- **Quitar una carta con otras presentes (bug — la eliminación no persistía):** `cardsToWrite = {B: entry}` (la carta A se eliminó del mapa en cliente). `setDoc({cards:{B:entry}}, {merge:true})` → Test D confirma que la clave ausente A **sobrevive** en Firestore — el merge preserva las claves que no aparecen en la escritura. La carta A seguía en Firestore tras el reload. [Dato — Test D]
+- **Quitar la única carta (funcionaba — la eliminación sí persistía):** `cardsToWrite = {}`. `setDoc({cards:{}}, {merge:true})` → Test J confirma que el campo `cards` queda **vacío o eliminado** en el documento. El mapa vacío actúa como sustitución del campo, no como fusión. [Dato — Test J, emulador Firestore SDK 12.16.0]
 
 Esta lógica no tiene relación con el **fallback not-found**: ese fallback solo se ejecuta cuando `updateDoc` lanza `code === "not-found"`, es decir, cuando el documento aún no existe. El comportamiento de sustitución del mapa vacío aplica sobre documentos existentes.
 
@@ -1023,3 +1028,30 @@ Otros cambios de accesibilidad en el mismo commit:
 - Bump de versión: `APP_VERSION` → `1.2.0` en `src/lib/constants.ts`.
 - Verificación de los tres estados de documento (A: solo `variant`, B: solo `cards`, C: ambos) en un entorno real con datos de usuario existentes.
 - Decisión D1/D4: confirmar si el modal antiguo se retira o coexiste (cierre del riesgo R10).
+
+---
+
+### 10.B.8 Comprobación estática — escrituras a `/users/{uid}/collection/{slug}` vs `validCollectionDoc`
+
+**Agente: Security Engineer**
+
+`validCollectionDoc` valida: `owned` (bool), `cards` (mapa, size ≤ 500), `favorite` (bool), `bulk_quantity` (number ≥ 0), `is_bulk` (bool), `is_shiny` (bool), `is_promo` (bool). Los campos `variant`, `language` y `updated_at` **no están en la función** — cualquier valor en esos campos pasa sin validación de reglas.
+
+| Función | Archivo:línea | Campos escritos | Tipos | Flag |
+|---|---|---|---|---|
+| `updatePokemonStatus` | `PokedexDataContext.tsx:261` | `owned` (bool), `variant` (Variant\|null), `language` (CardLanguage\|null), `updated_at`, +si !owned: `is_shiny=false`, `is_promo=false`, `is_bulk=false`, `bulk_quantity=0` | `owned` ✅ bool; `variant`/`language` ⚠️ pueden ser `null` con `owned=true` si el usuario no seleccionó; `is_shiny/is_promo/is_bulk` ✅ bool literal; `bulk_quantity=0` ✅ ≥ 0 | `variant` y `language` no están en `validCollectionDoc` → null no bloqueado por reglas. El modal nuevo bloquea "Guardar" si no hay variante; el modal antiguo no tiene esa guarda (ver R4) |
+| `updateSpecialFlag` | `PokedexDataContext.tsx:272` | `[is_shiny\|is_promo]` (bool), `updated_at` | ✅ bool literal | OK |
+| `updateBulkStatus` | `PokedexDataContext.tsx:289` | `is_bulk` (bool), `bulk_quantity` (number), `updated_at` | `is_bulk` ✅; `bulk_quantity` ⚠️ sin guarda de mínimo en la función — la UI limita a 1+ cuando `is_bulk=true` y a 0 cuando `is_bulk=false`, pero la función en sí acepta cualquier número. Un valor negativo sería bloqueado por la regla (`bulk_quantity >= 0`) | Riesgo bajo: la UI garantiza valores válidos; no hay guarda defensiva en el código |
+| `updateFavorite` | `PokedexDataContext.tsx:304` | `favorite` (bool), `updated_at` | ✅ bool literal | OK |
+| `updateCardEntry` (updateDoc FieldPath) | `PokedexDataContext.tsx:407` | `FieldPath("cards", cardId)` → entry `{copies, language}` ó `deleteField()`, `updated_at` | El documento resultante tiene `cards` como mapa ✅; `cards.size()` crece o decrece en 1 ✅ | OK. `validCollectionDoc` evalúa el doc resultante — `cards is map && size <= 500` se cumple |
+| `updateCardEntry` (setDoc fallback not-found) | `PokedexDataContext.tsx:418` | `cards` (mapa, ≥ 1 entradas tras guarda), `updated_at` | ✅ mapa no vacío, `size` ≤ 500 (Pikachu = 232 máximo conocido) | OK tras commit `ea0eaec` |
+| `updatePokemonStatus` (modal antiguo) | `usePokedexData.ts:203` | `owned`, `variant`, `language`, `updated_at`, +si !owned: `is_shiny=false`, `is_promo=false` | Igual que el de `PokedexDataContext` ⚠️ mismo flag de null | ⚠️ Además NO resetea `is_bulk`/`bulk_quantity` al desmarcar `owned`. No bloqueado por reglas, pero deja datos inconsistentes (is_bulk=true con owned=false). Ver R4 y R10 |
+| `updateSpecialFlag` (modal antiguo) | `usePokedexData.ts:218` | `[is_shiny\|is_promo]` (bool), `updated_at` | ✅ bool literal | OK |
+
+**Resumen de flags:**
+
+| # | Descripción | Bloqueado por regla | Riesgo real |
+|---|---|---|---|
+| F1 | `variant: null` ó `language: null` con `owned=true` | No (campos fuera de `validCollectionDoc`) | Bajo — el modal nuevo bloquea guardar sin variante; el modal antiguo no (ver R4) |
+| F2 | `bulk_quantity` sin guarda de no-negativo en `updateBulkStatus` | Sí si < 0 (regla lo bloquea) | Bajo — la UI impone mínimo 1 (is_bulk=true) ó 0 (is_bulk=false) |
+| F3 | `usePokedexData.updatePokemonStatus` no resetea `is_bulk`/`bulk_quantity` al desmarcar `owned` | No bloqueado | Medio — documentos con `is_bulk=true` + `owned=false` posibles si se usa el modal antiguo. Cierre planificado: retirar modal antiguo (R10) |
