@@ -413,6 +413,7 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
         } catch (err) {
           if ((err as { code?: string }).code === "not-found") {
             // First card for this pokemon — document doesn't exist yet.
+            if (Object.keys(cardsToWrite).length === 0) return;
             try {
               await setDoc(docRef, { cards: cardsToWrite, updated_at: serverTimestamp() }, { merge: true });
             } catch {
