@@ -960,6 +960,18 @@ El badge numérico en `PokemonCard.tsx` (línea 51) usa `Object.keys(pokemon.car
 
 El cap de 500 entradas por documento se estableció como límite de seguridad en las Firestore Rules. **No es un dato medido**: el Pokémon con más cartas en el catálogo es Pikachu con 232 cartas EN (dexId 25) [Dato — 10.A.2]. El cap de 500 es el doble de ese máximo conocido, con margen para expansiones futuras [Estimación]. Un atacante podría enviar un mapa con 501 entradas manualmente; la regla lo bloquea antes de escritura.
 
+#### Comportamiento histórico del mapa completo (pre-`af0159d`) y `setDoc({cards:{}},{merge:true})`
+
+Antes del commit `af0159d`, `updateCardEntry` construía el mapa completo y llamaba a `setDoc({cards: cardsToWrite, ...}, {merge:true})` en todos los casos (no solo en not-found). Al quitar la única carta de un Pokémon, `cardsToWrite` quedaba `{}` y se escribía `setDoc({cards:{}}, {merge:true})`.
+
+Según **firebase-js-sdk #1371** (comportamiento documentado en SDK 5.5.7): `setDoc(ref, {cards:{}}, {merge:true})` sobre un documento existente **sustituye el campo `cards` por un mapa vacío**, en lugar de hacer una merge a nivel de clave. Esto es diferente al comportamiento del Test D (donde `setDoc({cards:{id1:...}}, {merge:true})` preserva las claves ausentes): la diferencia está en que un mapa vacío `{}` actúa como reemplazo del campo, no como fusión selectiva.
+
+> **⚠️ Fuente:** firebase-js-sdk #1371, comportamiento del SDK 5.5.7. **No confirmado** en la versión actual del SDK. El Test J de `scripts/test-fieldpath.ts` verifica empíricamente si el comportamiento sigue igual en el emulador actual — Brayan ejecuta el test con `npx tsx scripts/test-fieldpath.ts`.
+
+Esta lógica no tiene relación con el **fallback not-found**: ese fallback solo se ejecuta cuando `updateDoc` lanza `code === "not-found"`, es decir, cuando el documento aún no existe. El comportamiento de sustitución del mapa vacío aplica sobre documentos existentes.
+
+La guarda `if (Object.keys(cardsToWrite).length === 0) return;` del commit actual protege el fallback not-found de hacer una escritura innecesaria (no añade ninguna carta nueva), pero no afecta a documentos existentes — el código actual ya usa `FieldPath + deleteField()` para esos casos.
+
 #### Limitación de las reglas de Firestore — sin validación de entradas del mapa
 
 El DSL de Firestore Rules no tiene primitivas de iteración sobre mapas con claves dinámicas. La función `validCollectionDoc` puede comprobar que `cards` es un mapa (`cards is map`) y que su tamaño es razonable (`cards.size() <= 500`), pero **no puede validar los valores de cada entrada** (ej. que `copies` sea un número positivo o que `language` sea uno de los valores permitidos). Esa validación se delega íntegramente al cliente [Dato — 10.B.2, DSL de reglas de Firestore].
@@ -1001,6 +1013,7 @@ Otros cambios de accesibilidad en el mismo commit:
 | R9 — `high.webp` sin verificación sistemática | **Pendiente** | `CardDetailModal` y `CardThumbnail` solicitan `{image}/high.webp`. Fase B verificó `high.jpg` con HEAD [Dato — 10.A.2], pero no `high.webp` ni los 240 URLs de fallback ES. Si `high.webp` no existe para alguna carta, `onError` muestra el placeholder silenciosamente. `scripts/check-images.ts` permite verificar una muestra de 30 cartas antes del deploy [Dato] |
 | R10 — Modal antiguo (`PokemonModal`) no retirado | Pendiente | El modal de Fase 5 sigue siendo el punto de entrada desde el grid (decisión D1/D4). No sabe del campo `cards` y no lo limpia al desmarcar `owned` (ver R4). La sustitución del flujo principal por `/pokedex/{dexId}` queda para Fase D |
 | R11 — Sin test automático de reglas Firestore | Pendiente | `firestore.rules` no tiene suite de tests automáticos (no hay `firebase emulators:exec` con fichero de rules tests). Única verificación: emulador manual de `test-fieldpath.ts`. Los tipos de las entradas del mapa `cards` no se validan en reglas (ver 10.B.5) |
+| R12 — Despliegue de reglas sin auditar documentos existentes en PROD | **Pendiente — bloquea deploy de reglas** | La función `validCollectionDoc` evalúa el documento **resultante** (incluye campos preexistentes no tocados por la escritura). Si un documento antiguo tiene un campo con tipo incorrecto (ej. `owned: "yes"` en lugar de `true`, o `bulk_quantity: "3"` en lugar de número), `allow create, update` lo bloqueará para **todas sus escrituras futuras**, aunque el write concreto sea válido. Antes de desplegar las reglas a PROD se requiere un script de solo lectura que audite la colección `/users/{uid}/collection/*` buscando campos fuera de tipo. El script no está escrito aún. |
 
 ### 10.B.7 Pendiente para Fase D
 
