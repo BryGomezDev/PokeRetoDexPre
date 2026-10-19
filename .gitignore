@@ -55,3 +55,7 @@ scripts/*.json
 # Script output – generated data, not for version control
 scripts/out/
 scripts/spike/out/
+
+# Firebase emulator runtime logs
+firestore-debug.log
+ui-debug.log

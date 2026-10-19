@@ -2,6 +2,19 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function validCollectionDoc(data) {
+      return (!('owned' in data) || data.owned is bool)
+        && (!('cards' in data) || (
+              data.cards is map
+              && data.cards.size() <= 500
+           ))
+        && (!('favorite' in data) || data.favorite is bool)
+        && (!('bulk_quantity' in data) || (data.bulk_quantity is number && data.bulk_quantity >= 0))
+        && (!('is_bulk' in data) || data.is_bulk is bool)
+        && (!('is_shiny' in data) || data.is_shiny is bool)
+        && (!('is_promo' in data) || data.is_promo is bool);
+    }
+
     match /pokemon/{slug} {
       allow read: if true;
       allow write: if false; // solo el script Python vía Admin SDK
@@ -11,7 +24,10 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == uid;
 
       match /collection/{pokemonSlug} {
-        allow read, write: if request.auth != null && request.auth.uid == uid;
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow create, update: if request.auth != null && request.auth.uid == uid
+          && validCollectionDoc(request.resource.data);
+        allow delete: if request.auth != null && request.auth.uid == uid;
       }
 
       match /config/rules {

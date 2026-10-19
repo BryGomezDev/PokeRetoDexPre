@@ -87,6 +87,7 @@ export default function PokedexPage() {
     updatePokemonStatus,
     updateSpecialFlag,
     updateBulkStatus,
+    updateFavorite,
   } = usePokedexContext();
 
   const [search, setSearch] = useState("");
@@ -95,7 +96,6 @@ export default function PokedexPage() {
   const [ownership, setOwnership] = useState<"all" | "owned" | "missing">("all");
   const [variantFilter, setVariantFilter] = useState("");
   const [languageFilter, setLanguageFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
   const [shinyFilter, setShinyFilter] = useState(false);
   const [promoFilter, setPromoFilter] = useState(false);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
@@ -107,7 +107,7 @@ export default function PokedexPage() {
   );
 
   const hasActiveFilters =
-    !!search || !!activeRegion || !!selectedType || ownership !== "all" || !!variantFilter || !!languageFilter || !!categoryFilter || shinyFilter || promoFilter;
+    !!search || !!activeRegion || !!selectedType || ownership !== "all" || !!variantFilter || !!languageFilter || shinyFilter || promoFilter;
 
   function clearFilters() {
     setSearch("");
@@ -116,7 +116,6 @@ export default function PokedexPage() {
     setOwnership("all");
     setVariantFilter("");
     setLanguageFilter("");
-    setCategoryFilter("");
     setShinyFilter(false);
     setPromoFilter(false);
   }
@@ -147,17 +146,13 @@ export default function PokedexPage() {
 
   const filteredPokemon = useMemo(
     () =>
-      pokemon.filter((p) => {
+      basePokemon.filter((p) => {
         if (activeRegion && p.region.toLowerCase() !== activeRegion) return false;
         if (selectedType && !p.types.map((typ) => typ.toLowerCase()).includes(selectedType)) return false;
         if (ownership === "owned" && !p.owned) return false;
         if (ownership === "missing" && p.owned) return false;
         if (variantFilter && p.variant !== variantFilter) return false;
         if (languageFilter && p.language !== languageFilter) return false;
-        if (categoryFilter === "nacional" && p.form_type !== null) return false;
-        if (categoryFilter === "mega" && p.form_type !== "mega") return false;
-        if (categoryFilter === "gmax" && p.form_type !== "gmax") return false;
-        if (categoryFilter === "regional" && p.form_type !== "regional") return false;
         if (shinyFilter && !p.is_shiny) return false;
         if (promoFilter && !p.is_promo) return false;
         if (search.trim()) {
@@ -166,7 +161,7 @@ export default function PokedexPage() {
         }
         return true;
       }),
-    [pokemon, activeRegion, selectedType, ownership, variantFilter, languageFilter, categoryFilter, shinyFilter, promoFilter, search]
+    [basePokemon, activeRegion, selectedType, ownership, variantFilter, languageFilter, shinyFilter, promoFilter, search]
   );
 
   const avatarSpriteUrl = useMemo(() => {
@@ -386,14 +381,6 @@ export default function PokedexPage() {
                   {LANGUAGE_KEYS.map((v) => <option key={v} value={v}>{t("pokedex.languages." + v)}</option>)}
                 </select>
 
-                <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className={SELECT_CLASS} style={SELECT_STYLE}>
-                  <option value="">{t("pokedex.filterCategory")}</option>
-                  <option value="nacional">{t("pokedex.categoryNational")}</option>
-                  <option value="mega">{t("pokedex.categoryMega")}</option>
-                  <option value="gmax">{t("pokedex.categoryGmax")}</option>
-                  <option value="regional">{t("pokedex.categoryRegional")}</option>
-                </select>
-
                 <button
                   onClick={() => setShinyFilter(!shinyFilter)}
                   className={cn(
@@ -434,9 +421,9 @@ export default function PokedexPage() {
 
             {/* Results count */}
             <p className="px-4 pt-2.5 pb-1 text-xs text-gray-500">
-              {filteredPokemon.length === pokemon.length
-                ? t("pokedex.resultsAll", { count: pokemon.length })
-                : t("pokedex.resultsFiltered", { filtered: filteredPokemon.length, total: pokemon.length })}
+              {filteredPokemon.length === basePokemon.length
+                ? t("pokedex.resultsAll", { count: basePokemon.length })
+                : t("pokedex.resultsFiltered", { filtered: filteredPokemon.length, total: basePokemon.length })}
             </p>
 
             {/* Empty state */}
@@ -459,8 +446,8 @@ export default function PokedexPage() {
                   <PokemonCard
                     key={p.slug}
                     pokemon={p}
-                    onClick={() => setSelectedSlug(p.slug)}
-
+                    onEditCollection={() => setSelectedSlug(p.slug)}
+                    onToggleFavorite={() => updateFavorite(p.slug, !p.favorite)}
                   />
                 ))}
               </div>

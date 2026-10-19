@@ -4,7 +4,7 @@ const cspHeader = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://raw.githubusercontent.com",
+  "img-src 'self' data: blob: https://raw.githubusercontent.com https://assets.tcgdex.net",
   "font-src 'self'",
   // Firebase Auth + Firestore APIs
   "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com",
@@ -19,6 +19,10 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'raw.githubusercontent.com',
         pathname: '/PokeAPI/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'assets.tcgdex.net',
       },
     ],
   },

@@ -1,12 +1,15 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   collection,
   doc,
   getDocs,
   onSnapshot,
   setDoc,
+  updateDoc,
+  deleteField,
+  FieldPath,
   orderBy,
   query,
   serverTimestamp,
@@ -16,7 +19,9 @@ import { db, auth } from "@/lib/firebase";
 import { useAuth } from "./AuthContext";
 import { useLanguage } from "./LanguageContext";
 import type { FormType, PokemonDoc, PokemonWithStatus, UserProfile, Variant, CardLanguage } from "@/hooks/usePokedexData";
+import { toDisplayState } from "@/hooks/usePokedexData";
 import { POKEMON_DATA_VERSION } from "@/lib/constants";
+import { applyCardEntry, type CardEntry } from "@/lib/cards";
 
 // Key changes with POKEMON_DATA_VERSION, automatically invalidating stale caches
 // when the /pokemon population script is re-run with new data.
@@ -43,6 +48,8 @@ interface PokedexDataContextValue {
     isBulk: boolean,
     quantity: number
   ) => Promise<void>;
+  updateFavorite: (slug: string, value: boolean) => Promise<void>;
+  updateCardEntry: (slug: string, cardId: string, entry: CardEntry | null) => void;
 }
 
 const PokedexDataContext = createContext<PokedexDataContextValue>({
@@ -53,6 +60,8 @@ const PokedexDataContext = createContext<PokedexDataContextValue>({
   updatePokemonStatus: async () => {},
   updateSpecialFlag: async () => {},
   updateBulkStatus: async () => {},
+  updateFavorite: async () => {},
+  updateCardEntry: () => {},
 });
 
 export function PokedexDataProvider({ children }: { children: React.ReactNode }) {
@@ -64,6 +73,15 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Refs for updateCardEntry debounce + rollback
+  const pokemonRef = useRef<PokemonWithStatus[]>([]);
+  const cardTimerRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const cardRollbackRef = useRef<Map<string, { cards: Record<string, CardEntry>; ownedWas: boolean; hasCatalogCardsWas: boolean }>>(new Map());
+  const pendingCardsRef = useRef<Map<string, Record<string, CardEntry>>>(new Map());
+
+  // Keep pokemonRef in sync with state (no render side-effect)
+  useEffect(() => { pokemonRef.current = pokemon; }, [pokemon]);
 
   useEffect(() => {
     if (!uid) {
@@ -165,21 +183,9 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
         }
 
         // --- 4. Build user collection map from always-fresh Firestore read ---
-        const collectionMap = new Map<
-          string,
-          { owned: boolean; variant: Variant | null; language: CardLanguage | null; is_shiny: boolean; is_promo: boolean; is_bulk: boolean; bulk_quantity: number }
-        >();
+        const collectionMap = new Map<string, ReturnType<typeof toDisplayState>>();
         collectionSnap.forEach((d) => {
-          const data = d.data();
-          collectionMap.set(d.id, {
-            owned: data.owned ?? false,
-            variant: (data.variant as Variant) ?? null,
-            language: (data.language as CardLanguage) ?? null,
-            is_shiny: data.is_shiny ?? false,
-            is_promo: data.is_promo ?? false,
-            is_bulk: data.is_bulk ?? false,
-            bulk_quantity: data.bulk_quantity ?? 0,
-          });
+          collectionMap.set(d.id, toDisplayState(d.data() as Record<string, unknown>));
         });
 
         // --- 5. Merge cached/fetched raw pokemon with fresh user collection ---
@@ -194,6 +200,9 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
             is_promo: entry?.is_promo ?? false,
             is_bulk: entry?.is_bulk ?? false,
             bulk_quantity: entry?.bulk_quantity ?? 0,
+            favorite: entry?.favorite ?? false,
+            cards: entry?.cards ?? {},
+            hasCatalogCards: entry?.hasCatalogCards ?? false,
           };
         });
 
@@ -286,8 +295,144 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
     [uid]
   );
 
+  const updateFavorite = useCallback(
+    async (slug: string, value: boolean) => {
+      if (!uid) return;
+      setPokemon((prev) =>
+        prev.map((p) => (p.slug === slug ? { ...p, favorite: value } : p))
+      );
+      await setDoc(
+        doc(db, "users", uid, "collection", slug),
+        { favorite: value, updated_at: serverTimestamp() },
+        { merge: true }
+      );
+    },
+    [uid]
+  );
+
+  const updateCardEntry = useCallback(
+    (slug: string, cardId: string, entry: CardEntry | null) => {
+      if (!uid) return;
+
+      // Base state: pending ref has priority over react state (handles rapid-fire clicks)
+      const baseCards =
+        pendingCardsRef.current.get(slug) ??
+        pokemonRef.current.find((p) => p.slug === slug)?.cards ??
+        {};
+
+      // Save rollback only at the start of the debounce window
+      if (!cardTimerRef.current.has(slug)) {
+        const current = pokemonRef.current.find((p) => p.slug === slug);
+        cardRollbackRef.current.set(slug, {
+          cards: { ...baseCards },
+          ownedWas: current?.owned ?? false,
+          hasCatalogCardsWas: current?.hasCatalogCards ?? false,
+        });
+      }
+
+      // Snapshot legacy-owned state before setPokemon (avoids stale closure inside callback).
+      // legacyOwned = true only when pokemon was owned via old modal (owned=true, hasCatalogCards=false).
+      const rollbackSnapshot = cardRollbackRef.current.get(slug)!;
+      const legacyOwned = rollbackSnapshot.ownedWas && !rollbackSnapshot.hasCatalogCardsWas;
+
+      const newCards = applyCardEntry(baseCards, cardId, entry);
+
+      // Update pending state synchronously (for the next rapid click)
+      pendingCardsRef.current.set(slug, newCards);
+
+      // Optimistic UI update — `owned` derived from cards count to stay in sync with silueta.
+      // Preserves legacy `owned` (set via old modal, no catalog cards) by checking legacyOwned.
+      setPokemon((prev) =>
+        prev.map((p) =>
+          p.slug === slug
+            ? {
+                ...p,
+                cards: newCards,
+                hasCatalogCards: Object.keys(newCards).length > 0,
+                owned: Object.keys(newCards).length > 0 || legacyOwned,
+              }
+            : p
+        )
+      );
+
+      // Debounce Firestore write 500ms
+      const existing = cardTimerRef.current.get(slug);
+      if (existing) clearTimeout(existing);
+
+      const timer = setTimeout(async () => {
+        const cardsToWrite = pendingCardsRef.current.get(slug);
+        const rollback = cardRollbackRef.current.get(slug);
+        cardTimerRef.current.delete(slug);
+        pendingCardsRef.current.delete(slug);
+        cardRollbackRef.current.delete(slug);
+
+        if (!cardsToWrite || !uid) return;
+
+        const rollbackCards = rollback?.cards ?? {};
+        const docRef = doc(db, "users", uid, "collection", slug);
+
+        // Per-key FieldPath writes to avoid setDoc(merge:true) preserving deleted card keys.
+        // Emulator Test D confirmed: setDoc(merge:true) with partial cards map keeps absent keys.
+        const writeArgs: (FieldPath | string | unknown)[] = [];
+        for (const [id, e] of Object.entries(cardsToWrite)) {
+          writeArgs.push(new FieldPath("cards", id), e);
+        }
+        for (const id of Object.keys(rollbackCards)) {
+          if (!(id in cardsToWrite)) {
+            writeArgs.push(new FieldPath("cards", id), deleteField());
+          }
+        }
+        writeArgs.push("updated_at", serverTimestamp());
+
+        function doRollback() {
+          if (rollback !== undefined) {
+            setPokemon((prev) =>
+              prev.map((p) =>
+                p.slug === slug
+                  ? {
+                      ...p,
+                      cards: rollback.cards,
+                      hasCatalogCards: Object.keys(rollback.cards).length > 0,
+                      owned: rollback.ownedWas,
+                    }
+                  : p
+              )
+            );
+          }
+          setError("No se pudo guardar la carta. Comprueba tu conexión.");
+          setTimeout(() => setError(null), 4000);
+        }
+
+        try {
+          await updateDoc(
+            docRef,
+            writeArgs[0] as string | FieldPath,
+            writeArgs[1],
+            ...writeArgs.slice(2)
+          );
+        } catch (err) {
+          if ((err as { code?: string }).code === "not-found") {
+            // First card for this pokemon — document doesn't exist yet.
+            if (Object.keys(cardsToWrite).length === 0) return;
+            try {
+              await setDoc(docRef, { cards: cardsToWrite, updated_at: serverTimestamp() }, { merge: true });
+            } catch {
+              doRollback();
+            }
+          } else {
+            console.error("[updateCardEntry]", err);
+            doRollback();
+          }
+        }
+      }, 500);
+
+      cardTimerRef.current.set(slug, timer);
+    },
+    [uid]
+  );
+
   return (
-    <PokedexDataContext.Provider value={{ pokemon, userProfile, loading, error, updatePokemonStatus, updateSpecialFlag, updateBulkStatus }}>
+    <PokedexDataContext.Provider value={{ pokemon, userProfile, loading, error, updatePokemonStatus, updateSpecialFlag, updateBulkStatus, updateFavorite, updateCardEntry }}>
       {children}
     </PokedexDataContext.Provider>
   );

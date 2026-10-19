@@ -47,6 +47,8 @@ export function PokemonModal({ pokemon, onClose, onSave, onToggleShiny, onToggle
   const [variant, setVariant] = useState<Variant | null>(pokemon.variant);
   const [language, setLanguage] = useState<CardLanguage | null>(pokemon.language);
   const [saving, setSaving] = useState(false);
+  const [catalogBlockMsg, setCatalogBlockMsg] = useState(false);
+  const catalogMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Bulk quantity — local state for immediate stepper feedback, debounce writes to Firestore
   const [localBulkQty, setLocalBulkQty] = useState(pokemon.bulk_quantity);
@@ -69,10 +71,10 @@ export function PokemonModal({ pokemon, onClose, onSave, onToggleShiny, onToggle
     localBulkQtyRef.current = pokemon.bulk_quantity;
   }, [pokemon.slug, pokemon.is_bulk]);
 
-  // On unmount: if a debounce write is still pending, cancel the timer and flush immediately
-  // so closing the modal within the 1000ms window never silently discards a quantity change
+  // On unmount: clear pending timers — catalog message and bulk debounce
   useEffect(() => {
     return () => {
+      if (catalogMsgTimerRef.current) clearTimeout(catalogMsgTimerRef.current);
       if (bulkDebounceRef.current) {
         clearTimeout(bulkDebounceRef.current);
         bulkDebounceRef.current = null;
@@ -84,7 +86,10 @@ export function PokemonModal({ pokemon, onClose, onSave, onToggleShiny, onToggle
   // Close on Escape key
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
@@ -99,6 +104,13 @@ export function PokemonModal({ pokemon, onClose, onSave, onToggleShiny, onToggle
 
   function handleToggleOwned() {
     const next = !owned;
+    if (!next && pokemon.hasCatalogCards) {
+      if (catalogMsgTimerRef.current) clearTimeout(catalogMsgTimerRef.current);
+      setCatalogBlockMsg(true);
+      catalogMsgTimerRef.current = setTimeout(() => setCatalogBlockMsg(false), 3000);
+      return;
+    }
+    setCatalogBlockMsg(false);
     setOwned(next);
     if (!next) {
       setVariant(null);
@@ -246,6 +258,10 @@ export function PokemonModal({ pokemon, onClose, onSave, onToggleShiny, onToggle
               </span>
             </button>
           </div>
+
+          {catalogBlockMsg && (
+            <p className="text-xs text-amber-400 -mt-2">{t("modal.blockUnownedHasCards")}</p>
+          )}
 
           {/* Shiny / Promo — interactive toggles, save immediately to Firestore */}
           {owned && (
