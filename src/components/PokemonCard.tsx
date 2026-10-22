@@ -3,10 +3,9 @@
 import { useState, useRef } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Sparkles, Ticket, Layers, Heart } from "lucide-react";
+import { Sparkles, Ticket, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/context/LanguageContext";
-import { deriveBulkCount } from "@/lib/cards";
 import type { PokemonWithStatus } from "@/hooks/usePokedexData";
 
 interface PokemonCardProps {
@@ -48,7 +47,6 @@ export function PokemonCard({ pokemon, onEditCollection, onToggleFavorite }: Pok
 
   const usesGradientBorder =
     pokemon.owned && (pokemon.variant === "alternativa" || pokemon.variant === "fullart");
-  const bulkCount = deriveBulkCount(pokemon.cards);
 
   return (
     <div
@@ -126,14 +124,6 @@ export function PokemonCard({ pokemon, onEditCollection, onToggleFavorite }: Pok
             </div>
             <div className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center pointer-events-none" aria-hidden="true">
               <Ticket size={13} className={cn(pokemon.is_promo ? "text-blue-400" : "text-gray-600")} />
-            </div>
-            <div className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center relative pointer-events-none" aria-hidden="true">
-              <Layers size={13} className={cn(bulkCount > 0 ? "text-emerald-400" : "text-gray-600")} />
-              {bulkCount > 0 && (
-                <span className="absolute bottom-0.5 right-0.5 text-[7px] font-bold text-emerald-400 leading-none">
-                  {bulkCount}
-                </span>
-              )}
             </div>
           </div>
         )}

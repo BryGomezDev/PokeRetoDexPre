@@ -278,6 +278,19 @@ Con el modelo derivado, los puntos de la pantalla cambian de la siguiente forma:
 - **Columnas de la tabla:** se mantienen `#` / Nombre / Región / Cantidad sin cambios visuales
 - **Lógica de importación/comparación con amigo:** no cambia — sigue leyendo `quantity` del JSON externo importado
 
+### Limitación conocida — granularidad del JSON bulk
+
+El JSON que exporta `/bulk` tiene estructura `{ slug, quantity }` por Pokémon, 
+donde `quantity = deriveBulkCount(pokemon.cards)`. 
+
+No indica qué carta concreta sobra (p. ej. "base1-4, holo, EN") — solo cuántas 
+copias totales tiene de más ese Pokémon. Un amigo que importe el archivo sabrá 
+"Charizard tiene 2 sobrantes" pero no "¿de qué carta exactamente?".
+
+Esta granularidad es intencional para Fase 1 (suficiente para intercambios informales).
+Si en el futuro se necesita una lista de cartas específicas, el JSON tendría que 
+exportar `{ slug, cards: [{ cardId, copies }] }` en lugar de la cantidad agregada.
+
 ### B5. Tres opciones para documentos legacy
 
 Los documentos que tienen `is_bulk: true` y `bulk_quantity > 0` en Firestore pero `cards: {}` vacío (creados con el modelo anterior) representan un caso edge. Hay tres caminos posibles:
@@ -497,6 +510,22 @@ Las cartas con rareza `Shiny*` se concentran en 3 sets específicos: Paldean Fat
 11. `scripts/test-card-filter.ts` — casos E1–E7 para `deriveBulkCount` añadidos
 
 Verificación: lint ✓, tsc ✓, build ✓, test:cards ✓
+
+### Pruebas manuales — comportamiento final (sin icono bulk en tarjeta)
+
+#### A. Indicador bulk en el grid (sin icono, solo /bulk)
+
+| # | Acción | Resultado esperado |
+|---|--------|--------------------|
+| A1 | Abre `/pokedex`. Ve a cualquier Pokémon. | No hay icono de capas ni badge en la esquina de ninguna tarjeta. |
+| A2 | Abre el modal → marca "Tengo" → elige variante → guarda. | La tarjeta cambia a color completo. No aparece ningún icono de bulk. |
+| A3 | Añade una segunda copia de la misma carta (+). | La tarjeta no cambia visualmente en el grid. Navega a `/bulk` para verificar que ese Pokémon aparece con 1 sobrante. |
+| A4 | Añade una tercera copia. | Sin cambio visual en el grid. `/bulk` muestra 2 sobrantes para ese Pokémon. |
+| A5 | Elimina copias hasta dejar 1. | Sin cambio visual en el grid. El Pokémon desaparece de `/bulk`. |
+
+> Nota: `deriveBulkCount` es una suma de `max(copies − 1, 0)` por carta.  
+> Dos cartas DISTINTAS con 1 copia cada una → **0** sobrantes (el bulk no cuenta cartas distintas, cuenta copias extra de la misma carta).  
+> Una carta con 3 copias → **2** sobrantes. Dos cartas (3 copias + 2 copias) → **3** sobrantes.
 
 **Justificación de riesgos:**
 

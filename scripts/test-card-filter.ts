@@ -154,6 +154,15 @@ assert.strictEqual(deriveBulkCount({ "c1": { copies: -1, language: null } }), 0,
 
 console.log("✓ E: deriveBulkCount — todos los casos pasaron");
 
+// F1: dos cartas DISTINTAS con 1 copia cada una → 0 sobrantes
+assert.strictEqual(
+  deriveBulkCount({ "c1": { copies: 1, language: null }, "c2": { copies: 1, language: null } }),
+  0,
+  "F1: dos cartas distintas × 1 copia cada una → 0 sobrantes"
+);
+
+console.log("✓ F: deriveBulkCount multi-carta — todos los casos pasaron");
+
 // ─── Output ──────────────────────────────────────────────────────────────────
 console.log(`✓ owned: ${filteredOwned.length}/5`);
 console.log(`✓ missing: ${filteredMissing.length}/${mergedCards.length - 5}`);
