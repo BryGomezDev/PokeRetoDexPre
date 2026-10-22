@@ -86,7 +86,6 @@ export default function PokedexPage() {
     error,
     updatePokemonStatus,
     updateSpecialFlag,
-    updateBulkStatus,
     updateFavorite,
   } = usePokedexContext();
 
@@ -464,8 +463,6 @@ export default function PokedexPage() {
           onSave={handleModalSave}
           onToggleShiny={() => updateSpecialFlag(selectedPokemon.slug, "is_shiny", !selectedPokemon.is_shiny)}
           onTogglePromo={() => updateSpecialFlag(selectedPokemon.slug, "is_promo", !selectedPokemon.is_promo)}
-          onToggleBulk={() => updateBulkStatus(selectedPokemon.slug, !selectedPokemon.is_bulk, selectedPokemon.is_bulk ? 0 : 1)}
-          onUpdateBulkQuantity={(qty) => updateBulkStatus(selectedPokemon.slug, true, qty)}
         />
       )}
     </div>

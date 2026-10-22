@@ -6,6 +6,7 @@ import { usePokedexContext } from "@/context/PokedexDataContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { Navigation } from "@/components/Navigation";
 import { cn } from "@/lib/utils";
+import { deriveBulkCount } from "@/lib/cards";
 
 const REGIONS = [
   "kanto", "johto", "hoenn", "sinnoh", "unova",
@@ -75,26 +76,27 @@ interface BulkTableProps {
   cards: (BulkCard & { sort_order?: number })[];
   colorFn: (qty: number) => string;
   rowAccent?: string;
+  label: string;
 }
 
-function BulkTable({ cards, colorFn, rowAccent }: BulkTableProps) {
+function BulkTable({ cards, colorFn, rowAccent, label }: BulkTableProps) {
   const { t } = useLanguage();
 
   return (
     <div className={cn("rounded-xl border overflow-hidden", rowAccent ? "border-blue-900/40" : "border-gray-800")}>
-      <table className="w-full text-sm border-collapse">
+      <table className="w-full text-sm border-collapse" aria-label={label}>
         <thead>
           <tr className={cn("border-b", rowAccent ? "border-blue-900/40 bg-blue-950/20" : "border-gray-800 bg-gray-900/60")}>
-            <th className="hidden sm:table-cell text-left py-2.5 px-4 text-xs font-medium text-gray-500 w-[4.5rem]">
+            <th scope="col" className="hidden sm:table-cell text-left py-2.5 px-4 text-xs font-medium text-gray-500 w-[4.5rem]">
               #
             </th>
-            <th className="text-left py-2.5 px-4 text-xs font-medium text-gray-500">
+            <th scope="col" className="text-left py-2.5 px-4 text-xs font-medium text-gray-500">
               {t("bulk.tableHeaderName")}
             </th>
-            <th className="hidden sm:table-cell text-left py-2.5 px-4 text-xs font-medium text-gray-500">
+            <th scope="col" className="hidden sm:table-cell text-left py-2.5 px-4 text-xs font-medium text-gray-500">
               {t("bulk.tableHeaderRegion")}
             </th>
-            <th className="text-right py-2.5 px-4 text-xs font-medium text-gray-500">
+            <th scope="col" className="text-right py-2.5 px-4 text-xs font-medium text-gray-500">
               {t("bulk.tableHeaderQty")}
             </th>
           </tr>
@@ -197,7 +199,7 @@ export default function BulkPage() {
   const bulkPokemon = useMemo(
     () =>
       pokemon
-        .filter((p) => p.owned && p.is_bulk)
+        .filter((p) => deriveBulkCount(p.cards) > 0)
         .sort((a, b) => a.sort_order - b.sort_order),
     [pokemon]
   );
@@ -211,7 +213,7 @@ export default function BulkPage() {
   );
 
   const totalCopies = useMemo(
-    () => bulkPokemon.reduce((sum, p) => sum + p.bulk_quantity, 0),
+    () => bulkPokemon.reduce((sum, p) => sum + deriveBulkCount(p.cards), 0),
     [bulkPokemon]
   );
 
@@ -230,7 +232,7 @@ export default function BulkPage() {
         pokedex_number: p.pokedex_number,
         name: p.name,
         region: p.region.toLowerCase(),
-        quantity: p.bulk_quantity,
+        quantity: deriveBulkCount(p.cards),
       })),
     };
 
@@ -259,6 +261,11 @@ export default function BulkPage() {
         }
 
         const matches: BulkCard[] = (raw.cards as BulkCard[])
+          .filter((card) =>
+            typeof card.slug === "string" &&
+            typeof card.quantity === "number" &&
+            card.quantity > 0
+          )
           .filter((card) => {
             const mine = pokemon.find((p) => p.slug === card.slug);
             return mine && !mine.owned;
@@ -404,10 +411,11 @@ export default function BulkPage() {
                   pokedex_number: p.pokedex_number,
                   name: p.name,
                   region: p.region.toLowerCase(),
-                  quantity: p.bulk_quantity,
+                  quantity: deriveBulkCount(p.cards),
                   sort_order: p.sort_order,
                 }))}
                 colorFn={getQuantityColor}
+                label={t("bulk.myBulkTableLabel")}
               />
             )}
 
@@ -447,6 +455,7 @@ export default function BulkPage() {
                     cards={importResult.cards}
                     colorFn={getQuantityColorBlue}
                     rowAccent="blue"
+                    label={t("bulk.friendBulkTableLabel")}
                   />
                 )}
               </div>

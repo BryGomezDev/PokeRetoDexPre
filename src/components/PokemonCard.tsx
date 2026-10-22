@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Sparkles, Ticket, Layers, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/context/LanguageContext";
+import { deriveBulkCount } from "@/lib/cards";
 import type { PokemonWithStatus } from "@/hooks/usePokedexData";
 
 interface PokemonCardProps {
@@ -47,8 +48,7 @@ export function PokemonCard({ pokemon, onEditCollection, onToggleFavorite }: Pok
 
   const usesGradientBorder =
     pokemon.owned && (pokemon.variant === "alternativa" || pokemon.variant === "fullart");
-
-  const cardCount = pokemon.hasCatalogCards ? Object.keys(pokemon.cards).length : 0;
+  const bulkCount = deriveBulkCount(pokemon.cards);
 
   return (
     <div
@@ -72,6 +72,7 @@ export function PokemonCard({ pokemon, onEditCollection, onToggleFavorite }: Pok
         ref={cardButtonRef}
         onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
         title={`${pokemon.name} (#${pokemon.pokedex_number})`}
+        aria-label={`${pokemon.name} #${pokemon.pokedex_number}${pokemon.owned ? ` — ${t("pokedex.owned")}` : ""}`}
         className={cn(
           "relative flex flex-col items-center gap-1 p-1.5 sm:p-2 rounded-xl bg-gray-900 w-full",
           "hover:scale-105 active:scale-95 transition-transform duration-150",
@@ -108,12 +109,6 @@ export function PokemonCard({ pokemon, onEditCollection, onToggleFavorite }: Pok
             />
           )}
 
-          {/* Card count badge — bottom-left of sprite */}
-          {cardCount > 0 && (
-            <span className="bg-red-600 text-white text-[7px] font-bold rounded-full w-4 h-4 flex items-center justify-center absolute bottom-0 left-0">
-              {cardCount}
-            </span>
-          )}
         </div>
 
         <span className="text-[9px] sm:text-[10px] text-gray-500 font-mono leading-none">
@@ -133,10 +128,10 @@ export function PokemonCard({ pokemon, onEditCollection, onToggleFavorite }: Pok
               <Ticket size={13} className={cn(pokemon.is_promo ? "text-blue-400" : "text-gray-600")} />
             </div>
             <div className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center relative pointer-events-none" aria-hidden="true">
-              <Layers size={13} className={cn(pokemon.is_bulk ? "text-emerald-400" : "text-gray-600")} />
-              {pokemon.is_bulk && pokemon.bulk_quantity > 0 && (
+              <Layers size={13} className={cn(bulkCount > 0 ? "text-emerald-400" : "text-gray-600")} />
+              {bulkCount > 0 && (
                 <span className="absolute bottom-0.5 right-0.5 text-[7px] font-bold text-emerald-400 leading-none">
-                  {pokemon.bulk_quantity}
+                  {bulkCount}
                 </span>
               )}
             </div>

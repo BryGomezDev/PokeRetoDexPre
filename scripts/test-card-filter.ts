@@ -8,8 +8,9 @@ import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mergeCards, filterCards, applyCardEntry } from "../src/lib/cards.ts";
+import { mergeCards, filterCards, applyCardEntry, deriveBulkCount } from "../src/lib/cards.ts";
 import type { CardEntry } from "../src/lib/cards.ts";
+import type { CardLanguage } from "../src/hooks/usePokedexData.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const catalogPath = resolve(__dirname, "../public/catalog/v1/25.json");
@@ -124,6 +125,34 @@ assert.strictEqual(
 assert.strictEqual(Object.keys(afterRemove5).length, 0, "D5c: cards map empty after remove");
 
 console.log("✓ deriveOwned: primera carta, quitar última, legacy owned, ciclo add→remove legacy");
+
+// ─── E: deriveBulkCount ───────────────────────────────────────────────────────
+
+// E1: mapa vacío → 0
+assert.strictEqual(deriveBulkCount({}), 0, "E1: mapa vacío → 0");
+
+// E2: 1 copia → 0 sobrantes
+assert.strictEqual(deriveBulkCount({ "c1": { copies: 1, language: null } }), 0, "E2: 1 copia → 0 sobrantes");
+
+// E3: 3 copias → 2 sobrantes
+assert.strictEqual(deriveBulkCount({ "c1": { copies: 3, language: null } }), 2, "E3: 3 copias → 2 sobrantes");
+
+// E4: dos cartas con copias distintas → suma correcta
+assert.strictEqual(
+  deriveBulkCount({ "c1": { copies: 3, language: null }, "c2": { copies: 2, language: "es" as CardLanguage } }),
+  3, "E4: (3-1)+(2-1) = 3"
+);
+
+// E5: 10 copias de una carta → 9 sobrantes
+assert.strictEqual(deriveBulkCount({ "c1": { copies: 10, language: null } }), 9, "E5: 10 copias → 9 sobrantes");
+
+// E6: copies=0 no suma ni rompe
+assert.strictEqual(deriveBulkCount({ "c1": { copies: 0, language: null } }), 0, "E6: copies=0 → 0");
+
+// E7: copies negativo no suma ni rompe
+assert.strictEqual(deriveBulkCount({ "c1": { copies: -1, language: null } }), 0, "E7: copies negativo → 0");
+
+console.log("✓ E: deriveBulkCount — todos los casos pasaron");
 
 // ─── Output ──────────────────────────────────────────────────────────────────
 console.log(`✓ owned: ${filteredOwned.length}/5`);

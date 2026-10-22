@@ -474,11 +474,29 @@ Las cartas con rareza `Shiny*` se concentran en 3 sets específicos: Paldean Fat
 
 ### Tabla de fases
 
-| Fase | Descripción | Archivos principales afectados | Tamaño | Riesgo | Dependencias |
-|---|---|---|---|---|---|
-| 1 | Bulk derivado + eliminar badge numérico de PokemonCard | `src/lib/cards.ts`, `src/app/(protected)/bulk/page.tsx`, `src/components/PokemonCard.tsx` | S | Bajo | Ninguna |
-| 2 | Retirar PokemonModal | `src/app/(protected)/pokedex/page.tsx`, `src/components/PokemonModal.tsx`, `src/context/PokedexDataContext.tsx` | M | Medio | Fase 1 (el modal es el único escritor de is_bulk en el flujo UI actual) |
-| 3 | Limpieza de tipos y código muerto | `src/hooks/usePokedexData.ts`, tipos legacy, imports muertos | S | Bajo | Fases 1 y 2 |
+| Fase | Descripción | Archivos principales afectados | Tamaño | Riesgo | Dependencias | Estado |
+|---|---|---|---|---|---|---|
+| 1 | Bulk derivado + eliminar badge numérico de PokemonCard | `src/lib/cards.ts`, `src/app/(protected)/bulk/page.tsx`, `src/components/PokemonCard.tsx` | S | Bajo | Ninguna | ✅ Completa |
+| 2 | Retirar PokemonModal | `src/app/(protected)/pokedex/page.tsx`, `src/components/PokemonModal.tsx`, `src/context/PokedexDataContext.tsx` | M | Medio | Fase 1 (el modal es el único escritor de is_bulk en el flujo UI actual) | Pendiente |
+| 3 | Limpieza de tipos y código muerto | `src/hooks/usePokedexData.ts`, tipos legacy, imports muertos | S | Bajo | Fases 1 y 2 | Pendiente |
+
+**Fase 1 — Estado: ✅ Completa (2026-10-22, rama `feat/bulk-derivado`)**
+
+10 archivos modificados:
+
+1. `src/lib/cards.ts` — función pura `deriveBulkCount(cards: Record<string, CardEntry>): number` añadida
+2. `src/hooks/usePokedexData.ts` — campos `is_bulk` y `bulk_quantity` marcados como `@deprecated`
+3. `src/context/PokedexDataContext.tsx` — función `updateBulkStatus` eliminada (función + interfaz + valor del context)
+4. `src/components/PokemonModal.tsx` — toggle de bulk y stepper de cantidad eliminados (~60 líneas neto)
+5. `src/app/(protected)/pokedex/page.tsx` — prop wiring de bulk eliminado
+6. `src/components/PokemonCard.tsx` — icono Layers usa `deriveBulkCount(pokemon.cards)` en lugar de los campos deprecados; `aria-label` añadido al botón de la tarjeta
+7. `src/lib/i18n/es.ts` — 6 claves nuevas: `pokedex.owned`, `cards.ownedSummary`, `cards.pokemonHeader`, `bulk.empty`, `bulk.emptyHint`, `bulk.myBulkTableLabel`, `bulk.friendBulkTableLabel`
+8. `src/lib/i18n/en.ts` — ídem en inglés
+9. `src/app/(protected)/pokedex/[dexId]/page.tsx` — línea de resumen de cartas poseídas (cartas distintas · copias totales · copias sobrantes); i18n de "Sin rareza" y "Pokémon #" corregido
+10. `src/app/(protected)/bulk/page.tsx` — reconstruido sobre `deriveBulkCount`; validación de esquema en importación JSON; `aria-label` en tabla + `scope="col"` en `<th>`
+11. `scripts/test-card-filter.ts` — casos E1–E7 para `deriveBulkCount` añadidos
+
+Verificación: lint ✓, tsc ✓, build ✓, test:cards ✓
 
 **Justificación de riesgos:**
 

@@ -43,11 +43,6 @@ interface PokedexDataContextValue {
     field: "is_shiny" | "is_promo",
     value: boolean
   ) => Promise<void>;
-  updateBulkStatus: (
-    slug: string,
-    isBulk: boolean,
-    quantity: number
-  ) => Promise<void>;
   updateFavorite: (slug: string, value: boolean) => Promise<void>;
   updateCardEntry: (slug: string, cardId: string, entry: CardEntry | null) => void;
 }
@@ -59,7 +54,6 @@ const PokedexDataContext = createContext<PokedexDataContextValue>({
   error: null,
   updatePokemonStatus: async () => {},
   updateSpecialFlag: async () => {},
-  updateBulkStatus: async () => {},
   updateFavorite: async () => {},
   updateCardEntry: () => {},
 });
@@ -238,8 +232,6 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
                 language: safeLanguage,
                 is_shiny: owned ? p.is_shiny : false,
                 is_promo: owned ? p.is_promo : false,
-                is_bulk: owned ? p.is_bulk : false,
-                bulk_quantity: owned ? p.bulk_quantity : 0,
               }
             : p
         )
@@ -254,8 +246,6 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
       if (!owned) {
         update.is_shiny = false;
         update.is_promo = false;
-        update.is_bulk = false;
-        update.bulk_quantity = 0;
       }
 
       await setDoc(doc(db, "users", uid, "collection", slug), update, { merge: true });
@@ -272,23 +262,6 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
       await setDoc(
         doc(db, "users", uid, "collection", slug),
         { [field]: value, updated_at: serverTimestamp() },
-        { merge: true }
-      );
-    },
-    [uid]
-  );
-
-  const updateBulkStatus = useCallback(
-    async (slug: string, isBulk: boolean, quantity: number) => {
-      if (!uid) return;
-      setPokemon((prev) =>
-        prev.map((p) =>
-          p.slug === slug ? { ...p, is_bulk: isBulk, bulk_quantity: quantity } : p
-        )
-      );
-      await setDoc(
-        doc(db, "users", uid, "collection", slug),
-        { is_bulk: isBulk, bulk_quantity: quantity, updated_at: serverTimestamp() },
         { merge: true }
       );
     },
@@ -432,7 +405,7 @@ export function PokedexDataProvider({ children }: { children: React.ReactNode })
   );
 
   return (
-    <PokedexDataContext.Provider value={{ pokemon, userProfile, loading, error, updatePokemonStatus, updateSpecialFlag, updateBulkStatus, updateFavorite, updateCardEntry }}>
+    <PokedexDataContext.Provider value={{ pokemon, userProfile, loading, error, updatePokemonStatus, updateSpecialFlag, updateFavorite, updateCardEntry }}>
       {children}
     </PokedexDataContext.Provider>
   );

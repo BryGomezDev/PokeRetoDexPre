@@ -101,7 +101,7 @@ function CardsContent({ params }: { params: { dexId: string } }) {
   }, [dexId, validDexId, retryCount]);
 
   function labelForRarity(rarity: string, lang: "es" | "en"): string {
-    if (rarity === "None") return lang === "es" ? t("cards.rarityNone") : "No rarity";
+    if (rarity === "None") return t("cards.rarityNone");
     if (rarity === "Rare Holo") return "Rare Holo";
     const entry = rarityMap[rarity];
     if (lang === "es" && entry?.es) return entry.es;
@@ -216,7 +216,7 @@ function CardsContent({ params }: { params: { dexId: string } }) {
   if (!poke) {
     return (
       <div className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center gap-4 px-4">
-        <p className="text-gray-400 text-center">Pokémon #{dexId} — {t("cards.noCards")}</p>
+        <p className="text-gray-400 text-center">{t("cards.pokemonHeader").replace("{number}", String(dexId))} — {t("cards.noCards")}</p>
         <button onClick={() => router.back()} className="text-sm text-red-400 hover:text-red-300 underline">
           {t("cards.back")}
         </button>
@@ -339,6 +339,19 @@ function CardsContent({ params }: { params: { dexId: string } }) {
 
       {/* Card grid */}
       <main className="p-3 pb-8">
+        {(() => {
+          const distinctCards = Object.keys(poke.cards).length;
+          const totalCopies = Object.values(poke.cards).reduce((s, e) => s + e.copies, 0);
+          const spareCopies = totalCopies - distinctCards;
+          return distinctCards > 0 ? (
+            <p className="text-xs text-gray-400 mb-3">
+              {t("cards.ownedSummary")
+                .replace("{cards}", String(distinctCards))
+                .replace("{copies}", String(totalCopies))
+                .replace("{spare}", String(spareCopies))}
+            </p>
+          ) : null;
+        })()}
         {filteredCards.length === 0 ? (
           <div className="flex flex-col items-center justify-center min-h-[40vh] gap-2">
             <p className="text-gray-400 font-medium">{t("cards.emptyTitle")}</p>

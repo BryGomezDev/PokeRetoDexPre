@@ -65,3 +65,16 @@ export function applyCardEntry(
   }
   return next;
 }
+
+/**
+ * bulk(pokemon) = sum over cards of max(copies − 1, 0)
+ * A pokemon with N copies of any card contributes N-1 spare copies.
+ * Legacy documents with is_bulk/bulk_quantity but no cards return 0.
+ */
+export function deriveBulkCount(cards: Record<string, CardEntry>): number {
+  let total = 0;
+  for (const entry of Object.values(cards)) {
+    if (entry.copies > 1) total += entry.copies - 1;
+  }
+  return total;
+}

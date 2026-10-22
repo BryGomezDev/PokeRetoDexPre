@@ -39,7 +39,9 @@ export interface PokemonWithStatus extends PokemonDoc {
   language: CardLanguage | null;
   is_shiny: boolean;
   is_promo: boolean;
+  /** @deprecated bulk derivado de cards — usar deriveBulkCount(p.cards) */
   is_bulk: boolean;
+  /** @deprecated bulk derivado de cards — usar deriveBulkCount(p.cards) */
   bulk_quantity: number;
   favorite: boolean;
   cards: Record<string, CardEntry>;
